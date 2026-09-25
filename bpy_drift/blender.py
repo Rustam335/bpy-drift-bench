@@ -3,7 +3,10 @@
 Resolution order for a target `major.minor`:
   1. env `BLENDER_BIN_<major><minor>` (e.g. BLENDER_BIN_45=D:/Tools/blender/.../blender.exe)
   2. an already-extracted portable build under the cache root
-  3. download the pinned Linux x64 tar.xz from download.blender.org and extract it
+  3. a pinned tar.xz found under the archive directories (env `BPY_DRIFT_TARBALL_DIRS`, os.pathsep
+     separated, default `/kaggle/input`, searched recursively): a Kaggle dataset attached to the
+     notebook, so a run needs no internet
+  4. download the pinned Linux x64 tar.xz from download.blender.org and extract it
 
 The cache root is env `BPY_DRIFT_BLENDER_ROOT`, else `/tmp/bpy-drift/blender` on Linux
 (Kaggle: outside /kaggle/working so ~5 GB of binaries never become notebook output).
@@ -59,6 +62,28 @@ def _extracted_binary(version: str) -> Path:
     return cache_root() / f"blender-{full}-linux-x64" / "blender"
 
 
+def archive_dirs() -> list[Path]:
+    env = os.environ.get("BPY_DRIFT_TARBALL_DIRS")
+    if env is None:
+        return [Path("/kaggle/input")]
+    return [Path(part) for part in env.split(os.pathsep) if part.strip()]
+
+
+def find_archive(version: str) -> Path | None:
+    """The pinned tar.xz for `version` inside an archive directory (an attached Kaggle dataset), if any."""
+    name = f"blender-{RELEASES[version]}-linux-x64.tar.xz"
+    for root in archive_dirs():
+        if not root.is_dir():
+            continue
+        direct = root / name
+        if direct.is_file():
+            return direct
+        found = next(root.rglob(name), None)
+        if found is not None:
+            return found
+    return None
+
+
 def download(version: str, log=print) -> Path:
     """Download and extract the pinned Linux build; returns the binary path."""
     if platform.system() != "Linux":
@@ -73,7 +98,11 @@ def download(version: str, log=print) -> Path:
     root = cache_root()
     root.mkdir(parents=True, exist_ok=True)
     archive = root / f"blender-{full}-linux-x64.tar.xz"
-    if not archive.exists():
+    local = find_archive(version)
+    if local is not None:
+        log(f"using attached archive {local}")
+        archive = local
+    elif not archive.exists():
         log(f"downloading {url}")
         with requests.get(url, stream=True, timeout=60) as r:
             r.raise_for_status()
@@ -85,7 +114,8 @@ def download(version: str, log=print) -> Path:
     log(f"extracting {archive.name}")
     with tarfile.open(archive, "r:xz") as tar:
         tar.extractall(root, filter="data") if sys.version_info >= (3, 12) else tar.extractall(root)
-    archive.unlink(missing_ok=True)
+    if local is None:
+        archive.unlink(missing_ok=True)  # attached datasets are read-only and stay where they are
     if not binary.exists():
         raise RuntimeError(f"extraction finished but {binary} is missing")
     return binary

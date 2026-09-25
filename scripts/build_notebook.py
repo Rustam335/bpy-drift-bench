@@ -49,14 +49,18 @@ Grading code, case bank and the list of verified API changes: [bpy-drift-bench](
 
     md("## 1. Setup\n\nInstalls the grading library and the shared libraries a headless Linux Blender still links against."),
     code(f"""
-import os, sys, subprocess, platform, pathlib
+import os, sys, subprocess, platform, pathlib, glob
 
 ON_KAGGLE = pathlib.Path("/kaggle").exists()
 PACKAGE_URL = "{TARBALL}"
 
 if ON_KAGGLE:
-    subprocess.run([sys.executable, "-m", "pip", "install", "-q", "--no-cache-dir", PACKAGE_URL], check=True)
-    subprocess.run("apt-get install -y -qq libxi6 libxxf86vm1 libxfixes3 libxrender1 libgl1 libegl1 libsm6 libxkbcommon0 > /dev/null",
+    # The attached dataset carries a wheel of the grading package and the four Blender archives, so a run
+    # needs no network. The GitHub tarball is only the fallback for a notebook without the dataset.
+    wheels = sorted(glob.glob("/kaggle/input/*/bpy_drift-*.whl"))
+    target = ["--no-index", "--no-deps", wheels[-1]] if wheels else ["--no-cache-dir", PACKAGE_URL]
+    subprocess.run([sys.executable, "-m", "pip", "install", "-q", *target], check=True)
+    subprocess.run("apt-get install -y -qq libxi6 libxxf86vm1 libxfixes3 libxrender1 libgl1 libegl1 libsm6 libxkbcommon0 > /dev/null 2>&1",
                    shell=True, check=False)
 
 import pandas as pd

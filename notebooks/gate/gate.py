@@ -22,10 +22,38 @@ mark("environment")
 print(platform.platform(), "| python", sys.version.split()[0])
 print(sh("nproc; free -g | head -2; df -h /tmp /kaggle/working 2>/dev/null; cat /etc/os-release | head -2; ldd --version | head -1"))
 
-mark("pip install from GitHub")
+mark("connectivity")
+import socket
+for host in ("github.com", "download.blender.org", "pypi.org", "archive.ubuntu.com"):
+    try:
+        print(f"{host:24s} -> {socket.gethostbyname(host)}")
+    except OSError as e:
+        print(f"{host:24s} -> DNS FAILED ({e})")
+try:
+    import requests
+    r = requests.get("https://download.blender.org/release/Blender4.2/", timeout=15)
+    print("HTTP download.blender.org:", r.status_code)
+except Exception as e:
+    print("HTTP download.blender.org: FAILED", type(e).__name__, e)
+print(sh("ls /kaggle/input 2>/dev/null; env | grep -i -E 'proxy|kaggle_' | cut -c1-120"))
+
+mark("kaggle_benchmarks")
+try:
+    import kaggle_benchmarks as kbench
+    names = sorted(kbench.llms)
+    print(len(names), "models")
+    print("\n".join(names))
+except Exception as e:
+    print("not available here:", type(e).__name__, e)
+
+mark("pip install (attached wheel, else GitHub tarball)")
 # A tarball needs no git on the worker; the git+https form failed to clone on Kaggle (exit 128).
 TARBALL = "https://github.com/Rustam335/bpy-drift-bench/archive/refs/heads/main.tar.gz"
-pip = subprocess.run([sys.executable, "-m", "pip", "install", "--no-cache-dir", TARBALL], capture_output=True, text=True)
+import glob
+wheels = sorted(glob.glob("/kaggle/input/*/bpy_drift-*.whl"))
+target = ["--no-index", "--no-deps", wheels[-1]] if wheels else ["--no-cache-dir", TARBALL]
+print("installing from", target[-1])
+pip = subprocess.run([sys.executable, "-m", "pip", "install", *target], capture_output=True, text=True)
 print("pip returncode", pip.returncode)
 print((pip.stdout or "")[-800:], (pip.stderr or "")[-2500:])
 
@@ -35,8 +63,13 @@ apt = subprocess.run("apt-get install -y -qq libxi6 libxxf86vm1 libxfixes3 libxr
                      shell=True, capture_output=True, text=True)
 print("apt returncode", apt.returncode, (apt.stdout + apt.stderr)[-600:])
 
-from bpy_drift import RELEASES, ensure_blender, verify_build, run_script  # noqa: E402
-from bpy_drift.blender import cache_root  # noqa: E402
+try:
+    from bpy_drift import RELEASES, ensure_blender, verify_build, run_script  # noqa: E402
+    from bpy_drift.blender import cache_root  # noqa: E402
+except ImportError as e:
+    print("bpy_drift not importable, stopping before Blender:", e)
+    print("GATE FAILED")
+    raise SystemExit(0)
 
 PROBE = "import bpy\nbpy.data.objects['Cube'].location.x = 1.0"
 PASSING = "import bpy\nassert bpy.data.objects['Cube'].location.x == 1.0"

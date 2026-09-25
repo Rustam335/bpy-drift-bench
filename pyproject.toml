@@ -14,4 +14,4 @@ dependencies = ["pandas>=2.0", "requests>=2.31"]
 packages = ["bpy_drift"]
 
 [tool.setuptools.package-data]
-bpy_drift = ["data/*.json"]
+bpy_drift = ["data/*.json", "reference/*.py"]
