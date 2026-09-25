@@ -56,7 +56,7 @@ def main(tarball_dir: str) -> int:
         "title": TITLE,
         "id": DATASET_ID,
         "licenses": [{"name": "other"}],
-        "subtitle": "Pinned headless Blender 3.6/4.2/4.5/5.0 Linux builds plus the bpy-drift grading package",
+        "subtitle": "Pinned Blender 3.6/4.2/4.5/5.0 Linux builds and the bpy-drift grading wheel",
         "description": (
             "Official Blender Foundation Linux x64 release archives (GPL-2.0-or-later, unmodified) for the four "
             "versions bpy-drift-bench grades against, and a wheel of the grading package. Attached to the benchmark "
