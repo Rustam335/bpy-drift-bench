@@ -24,3 +24,6 @@ runs/
 blender/
 *.blend1
 .ipynb_checkpoints/
+
+# ide
+.idea/
