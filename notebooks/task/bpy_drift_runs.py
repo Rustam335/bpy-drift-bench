@@ -138,12 +138,16 @@ import time
 RECORDS = []
 RETRY_DELAYS = (5, 10, 20, 40, 60, 90)  # seconds between attempts; about four minutes in total
 MAX_ERROR_SHARE = 0.10
+# The proxy reserves quota for the worst case output before every call (its default is the model maximum, which
+# produced 403 "estimated cost exceeds quota" once several models ran in parallel). Answers here are a short
+# script plus a few bullets, well under 1k tokens; 16k leaves room for reasoning models that think in the output.
+MAX_OUTPUT_TOKENS = 16384
 
 
 def prompt_with_retry(llm, message: str) -> str:
     for attempt, delay in enumerate(RETRY_DELAYS + (None,)):
         try:
-            return llm.prompt(message, temperature=0)
+            return llm.prompt(message, temperature=0, extra_api_params={"max_tokens": MAX_OUTPUT_TOKENS})
         except Exception as exc:  # noqa: BLE001 - the proxy raises its own error types; the message carries the status
             if delay is None:
                 raise
@@ -195,10 +199,13 @@ def bpy_drift_runs(llm, df) -> tuple[float, float]:
 
 # %%
 run = bpy_drift_case.run(llm=kbench.llm, case_id="eevee-engine", version="5.0")
-last = RECORDS[-1]
-print("runs:", last["runs"], "| aware:", last["aware"], "| build:", last["blender_build"])
-print("failures:", last["failures"])
-print(last["script"])
+if RECORDS:
+    last = RECORDS[-1]
+    print("runs:", last["runs"], "| aware:", last["aware"], "| build:", last["blender_build"])
+    print("failures:", last["failures"])
+    print(last["script"])
+else:  # kbench keeps the exception on the run object instead of raising; the full evaluation below retries anyway
+    print("dry run produced no answer:", (getattr(run, "error_message", None) or "").strip().splitlines()[-1:])
 RECORDS.clear()  # the dry run is a smoke test, not part of the measurement
 
 # %% [markdown]
