@@ -57,7 +57,7 @@ def main(src: str, dst: str) -> int:
     report.rate_table(df, "runs").to_csv(out / "runs_by_version.csv")
     report.rate_table(df, "aware").to_csv(out / "aware_by_version.csv")
     report.gap_table(df).to_csv(out / "gap.csv")
-    report.failure_reasons(df).to_csv(out / "failure_reasons.csv", index=False)
+    report.failure_reasons(df).reset_index().to_csv(out / "failure_reasons.csv", index=False)
 
     for metric in ("runs", "aware"):
         report.plot_drift_curves(df, metric)
