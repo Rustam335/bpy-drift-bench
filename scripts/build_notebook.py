@@ -1,9 +1,15 @@
-"""Regenerate notebooks/bpy_drift_bench.ipynb from the cell sources below.
-
-The notebook is the artefact Kaggle runs; keeping its source here makes diffs readable and
-keeps prose and code out of a hand-edited JSON file.
+"""Regenerate the Kaggle artefacts from the cell sources below.
 
     python scripts/build_notebook.py
+
+Writes two files from one cell list:
+  notebooks/bpy_drift_bench.ipynb      the notebook (kaggle kernels push -p notebooks)
+  notebooks/task/bpy_drift_runs.py     the same cells in jupytext percent format, which is what
+                                       `kaggle benchmarks tasks push bpy_drift_runs -f ... -d <dataset>` takes
+
+The task is written for `kbench.llm` (one model per run); models are scheduled from the CLI or the
+task page, so the leaderboard compares runs of the same code. Keeping the source here keeps diffs
+readable and prose out of hand-edited JSON.
 """
 
 from __future__ import annotations
@@ -12,9 +18,12 @@ import json
 from pathlib import Path
 
 REPO = "https://github.com/Rustam335/bpy-drift-bench"
-# pip installs from the tarball: the Kaggle worker could not `git clone` (exit 128) in the day-1 gate.
+# pip installs from the tarball when no dataset wheel is attached: the Kaggle worker could not `git clone`.
 TARBALL = f"{REPO}/archive/refs/heads/main.tar.gz"
-OUT = Path(__file__).resolve().parents[1] / "notebooks" / "bpy_drift_bench.ipynb"
+DATASET = "hoholalagaul/bpy-drift-blender-builds"
+ROOT = Path(__file__).resolve().parents[1]
+OUT_NOTEBOOK = ROOT / "notebooks" / "bpy_drift_bench.ipynb"
+OUT_TASK = ROOT / "notebooks" / "task" / "bpy_drift_runs.py"
 
 
 def md(s: str) -> dict:
@@ -31,8 +40,8 @@ CELLS = [
 
 Blender's Python API (`bpy`) changes with every release: `scene.objects.link` disappeared in 2.80, context override
 dicts in 4.0, `use_auto_smooth` in 4.1, the EEVEE engine id was renamed in 4.2 and renamed back in 5.0, the fast
-boolean solver became `FLOAT` in 5.0. Models trained on a mix of tutorials from every era tend to answer with whatever
-version was most common in their data.
+boolean solver became `FLOAT` in 5.0, the compositor became a node group in 5.0. Models trained on a mix of tutorials
+from every era tend to answer with whatever version was most common in their data.
 
 This benchmark asks the same scripting question for Blender **3.6, 4.2, 4.5 and 5.0** and grades each answer two ways:
 
@@ -41,28 +50,28 @@ This benchmark asks the same scripting question for Blender **3.6, 4.2, 4.5 and 
 | **runs** | the script, followed by a case-specific assert, exits 0 inside that exact Blender build (`blender -b --factory-startup --python`) |
 | **aware** | the answer's `WATCH OUT` section names every API that was removed, renamed or changed for that version, and its replacement |
 
-The primary leaderboard task is **runs**. Awareness is reported alongside it because the two come apart:
-code can work while the model has no idea the API moved, and a model can describe the change and still emit the old call.
+The leaderboard task is **runs**: how many of the (question, version) prompts produce a script that works in the
+Blender it was asked for. Awareness is reported alongside because the two come apart: code can work while the model
+has no idea the API moved, and a model can describe the change and still emit the old call.
 
-Grading code, case bank and the list of verified API changes: [bpy-drift-bench]({REPO}).
+Grading code, case bank, reference answers and the list of verified API changes: [bpy-drift-bench]({REPO}).
+The attached dataset holds the four official Blender Linux builds and a wheel of the grading package, so a run
+downloads nothing and every model is graded by the same binaries.
 """),
 
-    md("## 1. Setup\n\nInstalls the grading library and the shared libraries a headless Linux Blender still links against."),
+    md("## 1. Setup\n\nInstalls the grading library from the attached dataset, which also holds the four pinned Blender archives. Nothing is downloaded: the run is reproducible offline."),
     code(f"""
-import os, sys, subprocess, platform, pathlib, glob
+import os, sys, subprocess, platform, pathlib, glob, socket
 
 ON_KAGGLE = pathlib.Path("/kaggle").exists()
 PACKAGE_URL = "{TARBALL}"
 
 if ON_KAGGLE:
-    # The attached dataset carries a wheel of the grading package and the four Blender archives, so a run
-    # needs no network. The GitHub tarball is only the fallback for a notebook without the dataset.
     wheels = sorted(glob.glob("/kaggle/input/*/bpy_drift-*.whl"))
     target = ["--no-index", "--no-deps", wheels[-1]] if wheels else ["--no-cache-dir", PACKAGE_URL]
     subprocess.run([sys.executable, "-m", "pip", "install", "-q", *target], check=True)
     # The Kaggle image already ships the X11/GL stubs a headless Blender links against (the gate run proved it
     # with no network at all), so apt is only attempted when the worker can resolve the mirror.
-    import socket
     try:
         socket.gethostbyname("archive.ubuntu.com")
         subprocess.run("apt-get install -y -qq libxi6 libxxf86vm1 libxfixes3 libxrender1 libgl1 libegl1 libsm6 libxkbcommon0 > /dev/null 2>&1",
@@ -77,10 +86,15 @@ from bpy_drift import (RELEASES, ensure_blender, verify_build, run_script, load_
 from bpy_drift import report
 
 pd.set_option("display.max_colwidth", 120)
+os.environ.setdefault("RENDER_SUBRUNS", "False")
+try:
+    display
+except NameError:  # running the percent-format .py locally, outside IPython
+    display = print
 print("platform:", platform.platform())
 """),
 
-    md("## 2. Gate: every target Blender build starts headless\n\nNothing below runs until all four builds are downloaded, report the expected version, and can both pass and fail an assert. Roughly 350 MB per version."),
+    md("## 2. Gate: every target Blender build starts headless\n\nNothing below runs until all four builds are extracted from the attached archives, report the expected version, and can both pass and fail an assert."),
     code("""
 PROBE = "import bpy\\nbpy.data.objects['Cube'].location.x = 1.0"
 PASSING = "import bpy\\nassert bpy.data.objects['Cube'].location.x == 1.0"
@@ -104,6 +118,9 @@ assert gate["assert passes"].all() and gate["assert failure detected"].all(), "a
     code("""
 CASES = {c.id: c for c in load_cases()}
 eval_df = expand(CASES.values())
+LIMIT = int(os.environ.get("BPY_DRIFT_LIMIT", "0"))  # local smoke runs only; 0 = the whole bank
+if LIMIT:
+    eval_df = eval_df.head(LIMIT)
 print(f"{len(CASES)} cases x versions = {len(eval_df)} prompts per model")
 display(eval_df.pivot_table(index="category", columns="version", values="case_id", aggfunc="count", fill_value=0, observed=False))
 display(eval_df[["case_id", "category", "question"]].drop_duplicates("case_id").set_index("case_id"))
@@ -116,65 +133,76 @@ print("-" * 60)
 print(build_user_prompt("4.2", CASES["eevee-engine"].question))
 """),
 
-    md("## 5. Task definition\n\nThe task returns `runs`. Every graded answer, with its script, failure line and awareness verdict, is kept in `RECORDS` for the analysis below."),
+    md("## 5. Task definition\n\nOne sub-task per (case, version) prompt, and the leaderboard task that evaluates the whole bank for one model and returns the run rate with a 95% confidence interval. Every graded answer, with its script, failure line and awareness verdict, is kept in `RECORDS` for the analysis below."),
     code("""
 RECORDS = []
 
-def ask(llm, version, question):
-    with kbench.chats.new(name=f"bpy {version}", system_instructions=SYSTEM_PROMPT):
-        return llm.prompt(build_user_prompt(version, question), temperature=0)
+@kbench.task(store_task=False)
+def bpy_drift_case(llm, case_id: str, version: str) -> dict:
+    \"\"\"Ask one question for one Blender version and grade the answer inside that Blender.\"\"\"
+    case = CASES[case_id]
+    with kbench.chats.new(name=f"{case_id} @ {version}", system_instructions=SYSTEM_PROMPT):
+        answer = llm.prompt(build_user_prompt(version, case.question), temperature=0)
+    result = grade(answer, case, version, binary=BLENDER[version])
+    RECORDS.append({"model": llm.name, "category": case.category, "answer": answer, **result.as_dict()})
+    return {"case_id": case_id, "version": version, "runs": result.runs, "aware": result.aware,
+            "reason": result.reason, "expected": result.expected}
+
 
 @kbench.task(
     name="bpy_drift_runs",
-    description="Does the model's Blender Python script run in the exact Blender version it was asked for?",
+    description="How many Blender Python scripts run in the exact Blender version they were written for (3.6, 4.2, 4.5, 5.0).",
 )
-def bpy_drift_runs(llm, case_id: str, version: str) -> bool:
-    case = CASES[case_id]
-    answer = ask(llm, version, case.question)
-    result = grade(answer, case, version, binary=BLENDER[version])
-    RECORDS.append({"model": llm.name, "category": case.category, "answer": answer, **result.as_dict()})
-    return result.runs
+def bpy_drift_runs(llm, df) -> tuple[float, float]:
+    \"\"\"Run rate over all prompts (a prompt that errors counts as failed) with a 95% normal-approximation CI.\"\"\"
+    with kbench.client.enable_cache():
+        runs = bpy_drift_case.evaluate(
+            llm=[llm], evaluation_data=df, on_failure="continue", max_attempts=2, retry_delay=5,
+            n_jobs=1, remove_run_files=True,  # every grade launches a Blender process
+        )
+    print(f"completed: {len(runs.completed_runs)}  errored: {len(runs.errored_runs)}")
+    for run in runs.errored_runs:
+        print("  errored:", run.params, (run.error_message or "")[:200])
+    done = runs.completed_runs.as_dataframe()
+    passed = int(done["result"].str.get("runs").sum()) if len(done) else 0
+    total = int(df.shape[0])
+    rate = passed / total
+    ci95 = 1.96 * (rate * (1 - rate) / total) ** 0.5
+    print(f"runs: {passed} of {total} prompts")
+    return rate, ci95
 """),
 
-    md("## 6. Dry run: one case, one model"),
+    md("## 6. Dry run: one case, one version"),
     code("""
-run = bpy_drift_runs.run(llm=kbench.llm, case_id="eevee-engine", version="5.0")
+run = bpy_drift_case.run(llm=kbench.llm, case_id="eevee-engine", version="5.0")
 last = RECORDS[-1]
 print("runs:", last["runs"], "| aware:", last["aware"], "| build:", last["blender_build"])
 print("failures:", last["failures"])
 print(last["script"])
 """),
 
-    md("## 7. Models\n\nThe models available to this notebook. The list is fixed before the full run and reported in the write-up; aim for a spread of vendors and sizes."),
+    md("## 7. Model under test\n\nThe task is written for `kbench.llm`, so the same code runs once per model; models are scheduled from the task page or with `kaggle benchmarks tasks run bpy_drift_runs -m <model>`. The models available to this notebook are listed for the record."),
     code("""
-print("\\n".join(sorted(kbench.llms)))
-MODELS = [kbench.llm]  # replace with an explicit list, e.g. [kbench.llms["google/gemini-2.5-flash"], ...]
+print("model under test:", kbench.llm.name)
+print("available:", ", ".join(sorted(kbench.llms)))
 """),
 
-    md("## 8. Full evaluation\n\n`n_jobs=1`: every grade launches a Blender process. The response cache means a re-run after a grading fix does not re-prompt the models."),
+    md("## 8. Full evaluation\n\n`n_jobs=1` because every grade launches a Blender process. The response cache means a re-run after a grading fix does not re-prompt the model."),
     code("""
-RECORDS.clear()
-with kbench.client.enable_cache():
-    runs = bpy_drift_runs.evaluate(
-        llm=MODELS,
-        evaluation_data=eval_df[["case_id", "version"]],
-        on_failure="continue",
-        max_attempts=2,
-        n_jobs=1,
-    )
-print(f"completed: {len(runs.completed_runs)}  errored: {len(runs.errored_runs)}")
+run = bpy_drift_runs.run(kbench.llm, eval_df[["case_id", "version"]])
+print("passed, total:", run.result)
 """),
 
-    md("## 9. Results"),
+    md("## 9. Results for this model\n\nThe cross-model comparison is built from the downloaded run outputs of every scheduled model (`kaggle benchmarks tasks download`); this section is the per-model view."),
     code("""
 df = report.records_frame(RECORDS)
 df.drop(columns=["answer", "stderr"]).to_csv("results.csv", index=False)
 df.to_json("records.jsonl", orient="records", lines=True)
 
 pct = "{:.0%}"
-print("Run rate by model and version")
+print("Run rate by version")
 display(report.rate_table(df, "runs").style.format(pct))
-print("Awareness rate by model and version")
+print("Awareness rate by version")
 display(report.rate_table(df, "aware").style.format(pct))
 print("Where the two axes disagree")
 display(report.gap_table(df).style.format({c: pct for c in ["runs", "aware", "runs but unaware", "aware but breaks"]}))
@@ -191,16 +219,16 @@ report.plot_category_heatmap(df, "runs")
 plt.tight_layout(); plt.savefig("heatmap_runs.png", bbox_inches="tight"); plt.show()
 """),
 
-    md("## 10. Publish\n\nKeeps only the primary task's files in the working directory, so the Kaggle benchmark is built from `bpy_drift_runs`."),
+    md("## 10. Publish\n\nKeeps only the leaderboard task's files in the working directory, so the Kaggle benchmark is built from `bpy_drift_runs`."),
     code("%choose bpy_drift_runs"),
 ]
 
 
-def main() -> None:
-    for i, cell in enumerate(CELLS):
+def write_notebook(cells: list[dict]) -> None:
+    for i, cell in enumerate(cells):
         cell["id"] = f"cell-{i:02d}"
     nb = {
-        "cells": CELLS,
+        "cells": cells,
         "metadata": {
             "kernelspec": {"display_name": "Python 3", "language": "python", "name": "python3"},
             "language_info": {"name": "python"},
@@ -208,8 +236,31 @@ def main() -> None:
         "nbformat": 4,
         "nbformat_minor": 5,
     }
-    OUT.write_text(json.dumps(nb, indent=1, ensure_ascii=False) + "\n", encoding="utf-8")
-    print(f"wrote {OUT} ({len(CELLS)} cells)")
+    OUT_NOTEBOOK.write_text(json.dumps(nb, indent=1, ensure_ascii=False) + "\n", encoding="utf-8")
+    print(f"wrote {OUT_NOTEBOOK} ({len(cells)} cells)")
+
+
+def write_task(cells: list[dict]) -> None:
+    """jupytext percent format: `# %%` code cells, `# %% [markdown]` cells with commented prose, magics commented."""
+    parts = [
+        "# ---\n# jupyter:\n#   jupytext:\n#     text_representation:\n#       extension: .py\n#       format_name: percent\n"
+        "#   kernelspec:\n#     display_name: Python 3\n#     language: python\n#     name: python3\n# ---\n",
+    ]
+    for cell in cells:
+        if cell["cell_type"] == "markdown":
+            body = "\n".join(f"# {line}".rstrip() for line in cell["source"].split("\n"))
+            parts.append(f"# %% [markdown]\n{body}\n")
+        else:
+            body = "\n".join(f"# {line}" if line.lstrip().startswith("%") else line for line in cell["source"].split("\n"))
+            parts.append(f"# %%\n{body}\n")
+    OUT_TASK.parent.mkdir(parents=True, exist_ok=True)
+    OUT_TASK.write_text("\n".join(parts), encoding="utf-8")
+    print(f"wrote {OUT_TASK}")
+
+
+def main() -> None:
+    write_notebook(CELLS)
+    write_task(CELLS)
 
 
 if __name__ == "__main__":

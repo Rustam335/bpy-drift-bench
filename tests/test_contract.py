@@ -23,6 +23,12 @@ def test_extract_script_prefers_fenced_block():
     assert extract_script(text) == "import bpy\nprint(1)"
 
 
+def test_extract_script_dedents_a_fenced_block_indented_as_a_whole():
+    # Gemini 3 Flash indented the entire fenced block by four spaces; Blender raised IndentationError.
+    text = "    ```python\n    import bpy\n\n    if True:\n        x = 1\n    ```\n    WATCH OUT\n    - none"
+    assert extract_script(text) == "import bpy\n\nif True:\n    x = 1"
+
+
 def test_extract_script_falls_back_to_indented_block():
     text = "ANSWER\n\n    import bpy\n    print(2)\n\nWATCH OUT\n- none"
     assert extract_script(text) == "import bpy\nprint(2)"

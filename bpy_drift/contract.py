@@ -15,6 +15,7 @@ as `a / b`, `a and b` or `a via b` count if any is mentioned. Case and punctuati
 from __future__ import annotations
 
 import re
+import textwrap
 from dataclasses import dataclass
 
 STOP_WORDS = {"bpy", "types", "ops", "none", "and", "the", "via", "attribute", "operator", "pep"}
@@ -41,10 +42,14 @@ def split_blocks(text: str) -> Blocks:
 
 
 def extract_script(text: str) -> str:
-    """The python script in the answer: first fenced block, else a 4-space indented block."""
+    """The python script in the answer: first fenced block, else a 4-space indented block.
+
+    A fenced block that the model indented as a whole (markdown list style) is dedented, so the
+    grade reflects the bpy calls and not the chat formatting.
+    """
     m = FENCED.search(text)
     if m:
-        return m.group(1).rstrip()
+        return textwrap.dedent(m.group(1)).strip("\n").rstrip()
     answer = split_blocks(text).answer
     indented = [line[4:] for line in answer.split("\n") if line.startswith("    ")]
     return "\n".join(indented).strip()
