@@ -1,0 +1,26 @@
+# working notes stay local (README.md is the only markdown that ships)
+*.md
+!README.md
+docs/
+.claude/
+
+# secrets
+.env
+.env.local
+kaggle.json
+access_token
+
+# python
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+
+# local runs
+runs/
+blender/
+*.blend1
+.ipynb_checkpoints/

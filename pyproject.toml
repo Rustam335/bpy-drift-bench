@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bpy-drift"
+version = "0.1.0"
+description = "Grades LLM-written Blender Python against the exact Blender version it was asked for."
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = ["pandas>=2.0", "requests>=2.31"]
+
+[tool.setuptools]
+packages = ["bpy_drift"]
+
+[tool.setuptools.package-data]
+bpy_drift = ["data/*.json"]

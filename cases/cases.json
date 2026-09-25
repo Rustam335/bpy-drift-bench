@@ -1,0 +1,101 @@
+[
+  {
+    "id": "link-object",
+    "category": "scene-object-api",
+    "question": "Create a new mesh object from a single triangle (three vertices, one face), name the object 'Tri', and link it to the current scene so it is visible.",
+    "apiChanges": ["scene-objects-link"],
+    "versions": ["3.6", "4.2", "4.5", "5.0"],
+    "assert": "import bpy\no = bpy.data.objects['Tri']\nassert o.type == 'MESH', o.type\nassert o.name in bpy.context.scene.objects, 'Tri is not linked to the scene'\nassert len(o.data.polygons) >= 1"
+  },
+  {
+    "id": "select-active",
+    "category": "scene-object-api",
+    "question": "Deselect everything, then select only the object named 'Cube' and make it the active object.",
+    "apiChanges": ["object-select", "scene-objects-active"],
+    "versions": ["3.6", "4.2", "4.5", "5.0"],
+    "assert": "import bpy\nc = bpy.data.objects['Cube']\nassert c.select_get(), 'Cube not selected'\nassert bpy.context.view_layer.objects.active == c, 'Cube not active'\nassert all(not o.select_get() for o in bpy.context.scene.objects if o != c), 'other objects still selected'"
+  },
+  {
+    "id": "matrix-world",
+    "category": "scene-object-api",
+    "question": "Move the object named 'Cube' to location (1, 2, 3), then print the world-space position of each of its vertices by transforming the local coordinates with the object's world matrix.",
+    "apiChanges": ["matrix-multiplication-operator", "scene-update"],
+    "versions": ["3.6", "4.2", "4.5", "5.0"],
+    "assert": "import bpy\nc = bpy.data.objects['Cube']\nassert tuple(round(v, 3) for v in c.location) == (1.0, 2.0, 3.0), tuple(c.location)"
+  },
+  {
+    "id": "boolean-apply",
+    "category": "context-override",
+    "question": "Add a UV sphere, then add a Boolean modifier in UNION mode on the object named 'Cube' using the sphere as the cutter, and apply the modifier so the union is baked into Cube's mesh.",
+    "apiChanges": ["bpy-ops-context-override-dict", "boolean-solver-manifold"],
+    "versions": ["3.6", "4.2", "4.5", "5.0"],
+    "assert": "import bpy\nc = bpy.data.objects['Cube']\nassert not any(m.type == 'BOOLEAN' for m in c.modifiers), 'Boolean modifier was not applied'\nassert len(c.data.vertices) > 8, 'mesh still has only the original 8 vertices'",
+    "notes": "The override dict form was deprecated in 3.2 and removed in 4.0, so it is a live trap from 4.2 on and merely deprecated in 3.6."
+  },
+  {
+    "id": "emission-material",
+    "category": "principled-sockets",
+    "question": "Create a material named 'Glow' whose Principled BSDF emits orange light with emission strength 5, and assign it to the object named 'Cube'.",
+    "apiChanges": ["principled-emission-socket"],
+    "versions": ["3.6", "4.2", "4.5", "5.0"],
+    "assert": "import bpy\nm = bpy.data.materials['Glow']\nassert m.use_nodes\nn = next(n for n in m.node_tree.nodes if n.type == 'BSDF_PRINCIPLED')\nassert n.inputs['Emission Strength'].default_value >= 5, n.inputs['Emission Strength'].default_value\ncol = n.inputs['Emission Color'].default_value\nassert col[0] > 0.5 and col[2] < 0.5, tuple(col)\nassert any(s == m for s in bpy.data.objects['Cube'].data.materials), 'Glow not assigned to Cube'",
+    "assertByVersion": {
+      "3.6": "import bpy\nm = bpy.data.materials['Glow']\nassert m.use_nodes\nn = next(n for n in m.node_tree.nodes if n.type == 'BSDF_PRINCIPLED')\nassert n.inputs['Emission Strength'].default_value >= 5, n.inputs['Emission Strength'].default_value\ncol = n.inputs['Emission'].default_value\nassert col[0] > 0.5 and col[2] < 0.5, tuple(col)\nassert any(s == m for s in bpy.data.objects['Cube'].data.materials), 'Glow not assigned to Cube'"
+    }
+  },
+  {
+    "id": "node-group-sockets",
+    "category": "node-interface",
+    "question": "Create a Geometry Nodes node group named 'MyGroup' with a Geometry input socket, a Float input socket named 'Scale', and a Geometry output socket.",
+    "apiChanges": ["nodetree-inputs-new"],
+    "versions": ["3.6", "4.2", "4.5", "5.0"],
+    "assert": "import bpy\ng = bpy.data.node_groups['MyGroup']\nsockets = [i for i in g.interface.items_tree if i.item_type == 'SOCKET']\nassert any(i.in_out == 'INPUT' and i.socket_type == 'NodeSocketGeometry' for i in sockets), 'no Geometry input'\nassert any(i.in_out == 'INPUT' and i.socket_type == 'NodeSocketFloat' and i.name == 'Scale' for i in sockets), 'no Float input named Scale'\nassert any(i.in_out == 'OUTPUT' and i.socket_type == 'NodeSocketGeometry' for i in sockets), 'no Geometry output'",
+    "assertByVersion": {
+      "3.6": "import bpy\ng = bpy.data.node_groups['MyGroup']\nassert any(s.bl_socket_idname == 'NodeSocketGeometry' for s in g.inputs), 'no Geometry input'\nassert any(s.bl_socket_idname == 'NodeSocketFloat' and s.name == 'Scale' for s in g.inputs), 'no Float input named Scale'\nassert any(s.bl_socket_idname == 'NodeSocketGeometry' for s in g.outputs), 'no Geometry output'"
+    }
+  },
+  {
+    "id": "export-obj",
+    "category": "io-operators",
+    "question": "Export only the selected objects to a Wavefront OBJ file. The output path is given by the environment variable BPY_OUT_OBJ (read it with os.environ). Select the object named 'Cube' first.",
+    "apiChanges": ["export-scene-obj"],
+    "versions": ["3.6", "4.2", "4.5", "5.0"],
+    "assert": "import os\np = os.environ['BPY_OUT_OBJ']\nassert os.path.exists(p), 'OBJ file was not written'\nassert os.path.getsize(p) > 0, 'OBJ file is empty'",
+    "notes": "3.6 ships both the legacy Python exporter and wm.obj_export; from 4.0 only wm.obj_export exists."
+  },
+  {
+    "id": "auto-smooth",
+    "category": "auto-smooth",
+    "question": "Make the mesh of the object named 'Cube' shade smooth while keeping edges sharp where the angle between faces is above 30 degrees (smooth by angle).",
+    "apiChanges": ["mesh-use-auto-smooth"],
+    "versions": ["3.6", "4.2", "4.5", "5.0"],
+    "assert": "import bpy\nc = bpy.data.objects['Cube']\nsmooth_faces = all(p.use_smooth for p in c.data.polygons)\nhas_sharp_attr = 'sharp_edge' in c.data.attributes\nhas_nodes_mod = any(m.type == 'NODES' for m in c.modifiers)\nassert smooth_faces or has_sharp_attr or has_nodes_mod, 'no smooth shading, sharp_edge attribute or Smooth by Angle modifier found'",
+    "assertByVersion": {
+      "3.6": "import bpy, math\nc = bpy.data.objects['Cube']\nassert all(p.use_smooth for p in c.data.polygons), 'faces are not shaded smooth'\nassert c.data.use_auto_smooth, 'use_auto_smooth is off'\nassert abs(math.degrees(c.data.auto_smooth_angle) - 30) < 1, math.degrees(c.data.auto_smooth_angle)"
+    }
+  },
+  {
+    "id": "eevee-engine",
+    "category": "render-engine",
+    "question": "Set the render engine to EEVEE and the render resolution to 640 by 480 pixels.",
+    "apiChanges": ["render-engine-eevee-next", "render-engine-eevee-50"],
+    "versions": ["3.6", "4.2", "4.5", "5.0"],
+    "assert": "import bpy\ns = bpy.context.scene\nassert s.render.engine == 'BLENDER_EEVEE', s.render.engine\nassert (s.render.resolution_x, s.render.resolution_y) == (640, 480)",
+    "assertByVersion": {
+      "4.2": "import bpy\ns = bpy.context.scene\nassert s.render.engine == 'BLENDER_EEVEE_NEXT', s.render.engine\nassert (s.render.resolution_x, s.render.resolution_y) == (640, 480)",
+      "4.5": "import bpy\ns = bpy.context.scene\nassert s.render.engine == 'BLENDER_EEVEE_NEXT', s.render.engine\nassert (s.render.resolution_x, s.render.resolution_y) == (640, 480)"
+    },
+    "notes": "The id went BLENDER_EEVEE (<=4.1) -> BLENDER_EEVEE_NEXT (4.2-4.5) -> BLENDER_EEVEE (5.0). A model trained on 4.2-era docs breaks on both 3.6 and 5.0."
+  },
+  {
+    "id": "boolean-fast-solver",
+    "category": "boolean-solver",
+    "question": "Add a second cube as a cutter, then add a Boolean modifier in DIFFERENCE mode on the object named 'Cube' using the fast (non-exact) solver. Do not apply it.",
+    "apiChanges": ["boolean-solver-fast-to-float", "boolean-solver-manifold"],
+    "versions": ["3.6", "4.2", "4.5", "5.0"],
+    "assert": "import bpy\nc = bpy.data.objects['Cube']\nm = next(m for m in c.modifiers if m.type == 'BOOLEAN')\nassert m.operation == 'DIFFERENCE', m.operation\nassert m.solver == 'FAST', m.solver",
+    "assertByVersion": {
+      "5.0": "import bpy\nc = bpy.data.objects['Cube']\nm = next(m for m in c.modifiers if m.type == 'BOOLEAN')\nassert m.operation == 'DIFFERENCE', m.operation\nassert m.solver == 'FLOAT', m.solver"
+    }
+  }
+]

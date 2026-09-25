@@ -1,0 +1,50 @@
+[
+  {
+    "version": "2.80",
+    "lts": false,
+    "releaseDate": "2019-07-30",
+    "releaseNotesUrl": "https://developer.blender.org/docs/release_notes/2.80/python_api/"
+  },
+  {
+    "version": "3.6",
+    "lts": true,
+    "releaseDate": "2023-06-27",
+    "releaseNotesUrl": "https://developer.blender.org/docs/release_notes/3.6/python_api/"
+  },
+  {
+    "version": "4.0",
+    "lts": false,
+    "releaseDate": "2023-11-14",
+    "releaseNotesUrl": "https://developer.blender.org/docs/release_notes/4.0/python_api/"
+  },
+  {
+    "version": "4.1",
+    "lts": false,
+    "releaseDate": "2024-03-26",
+    "releaseNotesUrl": "https://developer.blender.org/docs/release_notes/4.1/python_api/"
+  },
+  {
+    "version": "4.2",
+    "lts": true,
+    "releaseDate": "2024-07-16",
+    "releaseNotesUrl": "https://developer.blender.org/docs/release_notes/4.2/python_api/"
+  },
+  {
+    "version": "4.4",
+    "lts": false,
+    "releaseDate": "2025-03-18",
+    "releaseNotesUrl": "https://developer.blender.org/docs/release_notes/4.4/python_api/"
+  },
+  {
+    "version": "4.5",
+    "lts": true,
+    "releaseDate": "2025-07-15",
+    "releaseNotesUrl": "https://developer.blender.org/docs/release_notes/4.5/python_api/"
+  },
+  {
+    "version": "5.0",
+    "lts": false,
+    "releaseDate": "2025-11-18",
+    "releaseNotesUrl": "https://developer.blender.org/docs/release_notes/5.0/python_api/"
+  }
+]
