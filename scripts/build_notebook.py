@@ -146,17 +146,33 @@ RETRY_DELAYS = (5, 10, 20, 40, 60, 90)  # seconds between attempts; about four m
 MAX_ERROR_SHARE = 0.10
 SECOND_PASS_PAUSE = 180  # seconds
 # The proxy reserves quota for the worst case output before every call (its default is the model maximum, which
-# produced 403 "estimated cost exceeds quota" once several models ran in parallel). Answers here are a short
-# script plus a few bullets, well under 1k tokens; 16k leaves room for reasoning models that think in the output.
-MAX_OUTPUT_TOKENS = 16384
+# produced 403 "estimated cost exceeds quota" against the daily inference budget). Answers here are a short script
+# plus a few bullets, under 600 tokens for every model seen so far; reasoning models spend their thinking inside
+# the same budget and get more room.
+MAX_OUTPUT_TOKENS = 8192
+REASONING_OUTPUT_TOKENS = 16384
+REASONING_MARKERS = ("deepseek-r1", "thinking", "reasoning", "gpt-5", "gpt-6", "grok")
+
+
+def output_cap(model_name: str) -> int:
+    return REASONING_OUTPUT_TOKENS if any(m in model_name.lower() for m in REASONING_MARKERS) else MAX_OUTPUT_TOKENS
+
+
+CIRCUIT_BREAKER = 3  # consecutive prompts lost after every attempt: the proxy is out of quota, stop waiting
+_consecutive_losses = 0
 
 
 def prompt_with_retry(llm, message: str) -> str:
-    for attempt, delay in enumerate(RETRY_DELAYS + (None,)):
+    global _consecutive_losses
+    delays = RETRY_DELAYS if _consecutive_losses < CIRCUIT_BREAKER else ()  # fail fast once the breaker has tripped
+    for attempt, delay in enumerate(delays + (None,)):
         try:
-            return llm.prompt(message, temperature=0, extra_api_params={"max_tokens": MAX_OUTPUT_TOKENS})
+            answer = llm.prompt(message, temperature=0, extra_api_params={"max_tokens": output_cap(llm.name)})
+            _consecutive_losses = 0
+            return answer
         except Exception as exc:  # noqa: BLE001 - the proxy raises its own error types; the message carries the status
             if delay is None:
+                _consecutive_losses += 1
                 raise
             print(f"  prompt attempt {attempt + 1} failed ({str(exc)[:120]}); retrying in {delay}s")
             time.sleep(delay)
@@ -166,10 +182,13 @@ def prompt_with_retry(llm, message: str) -> str:
 def bpy_drift_case(llm, case_id: str, version: str) -> dict:
     \"\"\"Ask one question for one Blender version and grade the answer inside that Blender.\"\"\"
     case = CASES[case_id]
-    with kbench.chats.new(name=f"{case_id} @ {version}", system_instructions=SYSTEM_PROMPT):
+    with kbench.chats.new(name=f"{case_id} @ {version}", system_instructions=SYSTEM_PROMPT) as chat:
         answer = prompt_with_retry(llm, build_user_prompt(version, case.question))
+        usage = chat.usage
     result = grade(answer, case, version, binary=BLENDER[version])
-    RECORDS.append({"model": llm.name, "category": case.category, "answer": answer, **result.as_dict()})
+    RECORDS.append({"model": llm.name, "category": case.category, "answer": answer, **result.as_dict(),
+                    "input_tokens": usage.input_tokens, "output_tokens": usage.output_tokens,
+                    "cost_usd": (usage.total_cost_nanodollars or 0) / 1e9})
     return {"case_id": case_id, "version": version, "runs": result.runs, "aware": result.aware,
             "reason": result.reason, "expected": result.expected}
 
@@ -196,7 +215,7 @@ def bpy_drift_runs(llm, df) -> tuple[float, float]:
     with kbench.client.enable_cache():
         passes = [evaluate_bank(df)]
         lost = report_errors(passes[-1])
-        if lost:  # a proxy overload lasts minutes; a second pass after a pause recovers most of the bank
+        if lost and len(lost) <= MAX_ERROR_SHARE * df.shape[0]:  # a proxy overload lasts minutes; a pause and a second pass recover the bank
             print(f"second pass over {len(lost)} prompts after a {SECOND_PASS_PAUSE}s pause")
             time.sleep(SECOND_PASS_PAUSE)
             passes.append(evaluate_bank(pd.DataFrame(lost, columns=["case_id", "version"])))
@@ -210,6 +229,8 @@ def bpy_drift_runs(llm, df) -> tuple[float, float]:
     rate = passed / total if total else 0.0
     ci95 = 1.96 * (rate * (1 - rate) / total) ** 0.5
     print(f"runs: {passed} of {total} prompts")
+    print(f"model proxy spend for this run: ${sum(r.get('cost_usd') or 0 for r in RECORDS):.2f}, "
+          f"max output tokens in one answer: {max((r.get('output_tokens') or 0) for r in RECORDS) if RECORDS else 0}")
     return rate, ci95
 """),
 
