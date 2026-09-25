@@ -1,6 +1,6 @@
 import os
 
-from bpy_drift.blender import RELEASES, archive_dirs, find_archive
+from bpy_drift.blender import RELEASES, archive_dirs, blender_reason, find_archive
 
 
 def test_find_archive_prefers_attached_dataset(tmp_path, monkeypatch):
@@ -15,9 +15,21 @@ def test_find_archive_prefers_attached_dataset(tmp_path, monkeypatch):
 
 def test_archive_dirs_default_is_kaggle_input(monkeypatch):
     monkeypatch.delenv("BPY_DRIFT_TARBALL_DIRS", raising=False)
-    assert [str(p) for p in archive_dirs()] == [os.path.join(os.sep, "kaggle", "input")] or archive_dirs()[0].name == "input"
+    assert archive_dirs()[0].name == "input" and archive_dirs()[0].parent.name == "kaggle"
 
 
 def test_archive_dirs_splits_on_pathsep(monkeypatch):
     monkeypatch.setenv("BPY_DRIFT_TARBALL_DIRS", os.pathsep.join(["dir-a", "dir-b", ""]))
     assert [p.name for p in archive_dirs()] == ["dir-a", "dir-b"]
+
+
+def test_blender_reason_prefers_the_exception_line_from_either_stream():
+    # Blender 3.6 prints the traceback to stdout and only its own notice to stderr.
+    stderr_36 = "Error: script failed, file: '/tmp/x/case.py', exiting.\n"
+    stdout_36 = "Traceback (most recent call last):\n  File \"case.py\", line 2\nAssertionError: deliberate failure\n"
+    assert blender_reason(stderr_36, stdout_36) == "AssertionError: deliberate failure"
+    # 4.x puts everything on stderr; the exception line wins over the generic notice.
+    stderr_42 = "Traceback (most recent call last):\nTypeError: bad enum\nError: script failed, file: 'x', exiting.\n"
+    assert blender_reason(stderr_42, "") == "TypeError: bad enum"
+    assert blender_reason("Error: script failed, file: 'x', exiting.", "nothing useful") == "Error: script failed, file: 'x', exiting."
+    assert blender_reason("", "") == ""

@@ -60,8 +60,15 @@ if ON_KAGGLE:
     wheels = sorted(glob.glob("/kaggle/input/*/bpy_drift-*.whl"))
     target = ["--no-index", "--no-deps", wheels[-1]] if wheels else ["--no-cache-dir", PACKAGE_URL]
     subprocess.run([sys.executable, "-m", "pip", "install", "-q", *target], check=True)
-    subprocess.run("apt-get install -y -qq libxi6 libxxf86vm1 libxfixes3 libxrender1 libgl1 libegl1 libsm6 libxkbcommon0 > /dev/null 2>&1",
-                   shell=True, check=False)
+    # The Kaggle image already ships the X11/GL stubs a headless Blender links against (the gate run proved it
+    # with no network at all), so apt is only attempted when the worker can resolve the mirror.
+    import socket
+    try:
+        socket.gethostbyname("archive.ubuntu.com")
+        subprocess.run("apt-get install -y -qq libxi6 libxxf86vm1 libxfixes3 libxrender1 libgl1 libegl1 libsm6 libxkbcommon0 > /dev/null 2>&1",
+                       shell=True, check=False)
+    except OSError:
+        pass
 
 import pandas as pd
 import kaggle_benchmarks as kbench

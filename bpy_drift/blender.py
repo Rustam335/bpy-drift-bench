@@ -164,16 +164,27 @@ class RunOutcome:
     def reason(self) -> str:
         if self.timed_out:
             return "timeout"
-        return blender_reason(self.stderr)
+        return blender_reason(self.stderr, self.stdout)
 
 
-def blender_reason(stderr: str) -> str:
-    """The Python exception line from a failed run, else the first stderr line."""
-    lines = [l.strip() for l in (stderr or "").splitlines() if l.strip()]
-    for line in reversed(lines):
-        if re.match(r"^[A-Za-z_.]*(Error|Exception)\b", line) and not line.startswith("Error: script failed"):
-            return line
-    return lines[0] if lines else ""
+EXCEPTION_LINE = re.compile(r"^[A-Za-z_.]*(Error|Exception)\b")
+GENERIC_FAILURE = "Error: script failed"
+
+
+def blender_reason(stderr: str, stdout: str = "") -> str:
+    """The Python exception line from a failed run.
+
+    Blender 4.x writes the traceback to stderr; 3.6 writes it to stdout, so both streams are
+    searched (stderr first). Falls back to the first stderr line, e.g. Blender's own
+    'Error: script failed ...' notice.
+    """
+    for stream in (stderr, stdout):
+        lines = [l.strip() for l in (stream or "").splitlines() if l.strip()]
+        for line in reversed(lines):
+            if EXCEPTION_LINE.match(line) and not line.startswith(GENERIC_FAILURE):
+                return line
+    err_lines = [l.strip() for l in (stderr or "").splitlines() if l.strip()]
+    return err_lines[0] if err_lines else ""
 
 
 def run_script(binary: str, script: str, assert_script: str = "", timeout_s: int = DEFAULT_TIMEOUT_S) -> RunOutcome:

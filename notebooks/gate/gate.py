@@ -58,10 +58,13 @@ print("pip returncode", pip.returncode)
 print((pip.stdout or "")[-800:], (pip.stderr or "")[-2500:])
 
 mark("apt libraries")
-print(sh("apt-get update -qq > /dev/null 2>&1; echo update-exit=$?"))
-apt = subprocess.run("apt-get install -y -qq libxi6 libxxf86vm1 libxfixes3 libxrender1 libgl1 libegl1 libsm6 libxkbcommon0",
-                     shell=True, capture_output=True, text=True)
-print("apt returncode", apt.returncode, (apt.stdout + apt.stderr)[-600:])
+try:
+    socket.gethostbyname("archive.ubuntu.com")
+    apt = subprocess.run("apt-get install -y -qq libxi6 libxxf86vm1 libxfixes3 libxrender1 libgl1 libegl1 libsm6 libxkbcommon0",
+                         shell=True, capture_output=True, text=True)
+    print("apt returncode", apt.returncode, (apt.stdout + apt.stderr)[-600:])
+except OSError:
+    print("no network: skipping apt (the image already has the X11/GL stubs Blender needs)")
 
 try:
     from bpy_drift import RELEASES, ensure_blender, verify_build, run_script  # noqa: E402
