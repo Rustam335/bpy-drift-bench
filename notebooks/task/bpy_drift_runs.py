@@ -130,7 +130,7 @@ print(build_user_prompt("4.2", CASES["eevee-engine"].question))
 #
 # One sub-task per (case, version) prompt, and the leaderboard task that evaluates the whole bank for one model and returns the run rate with a 95% confidence interval. Every graded answer, with its script, failure line and awareness verdict, is kept in `RECORDS` for the analysis below.
 #
-# The model proxy occasionally answers `429 heavy load` for a whole batch, and kbench forces `max_attempts=1` inside a nested evaluation, so the prompt call retries with backoff here. A prompt that still fails is an infrastructure error, not a model error: it is reported and left out of the denominator, and if more than a tenth of the bank is lost the run aborts instead of recording a misleading score.
+# The model proxy occasionally answers `429 heavy load` for a whole batch, and kbench forces `max_attempts=1` inside a nested evaluation, so the prompt call retries with backoff here, and the prompts that still fail get a second pass after a pause. A prompt lost even then is an infrastructure error, not a model error: it is reported and left out of the denominator, and if more than a tenth of the bank is lost the run aborts instead of recording a misleading score.
 
 # %%
 import time
@@ -138,6 +138,7 @@ import time
 RECORDS = []
 RETRY_DELAYS = (5, 10, 20, 40, 60, 90)  # seconds between attempts; about four minutes in total
 MAX_ERROR_SHARE = 0.10
+SECOND_PASS_PAUSE = 180  # seconds
 # The proxy reserves quota for the worst case output before every call (its default is the model maximum, which
 # produced 403 "estimated cost exceeds quota" once several models ran in parallel). Answers here are a short
 # script plus a few bullets, well under 1k tokens; 16k leaves room for reasoning models that think in the output.
@@ -173,18 +174,31 @@ def bpy_drift_case(llm, case_id: str, version: str) -> dict:
 )
 def bpy_drift_runs(llm, df) -> tuple[float, float]:
     """Run rate over the graded prompts with a 95% normal-approximation CI; prompts lost to proxy errors are excluded."""
-    with kbench.client.enable_cache():
-        runs = bpy_drift_case.evaluate(
-            llm=[llm], evaluation_data=df, on_failure="continue", max_attempts=1,
+    def evaluate_bank(prompts):
+        return bpy_drift_case.evaluate(
+            llm=[llm], evaluation_data=prompts, on_failure="continue", max_attempts=1,
             n_jobs=1, remove_run_files=True,  # every grade launches a Blender process
         )
-    print(f"completed: {len(runs.completed_runs)}  errored: {len(runs.errored_runs)}")
-    for run in runs.errored_runs:
-        last_line = (run.error_message or "").strip().splitlines()[-1:] or ["(no message)"]
-        print("  errored:", run.params.get("case_id"), run.params.get("version"), "|", last_line[0][:300])
-    if len(runs.errored_runs) > MAX_ERROR_SHARE * df.shape[0]:
-        raise RuntimeError(f"{len(runs.errored_runs)} of {df.shape[0]} prompts errored: infrastructure problem, not a score")
-    done = runs.completed_runs.as_dataframe()
+
+    def report_errors(runs):
+        print(f"completed: {len(runs.completed_runs)}  errored: {len(runs.errored_runs)}")
+        for run in runs.errored_runs:
+            last_line = (run.error_message or "").strip().splitlines()[-1:] or ["(no message)"]
+            print("  errored:", run.params.get("case_id"), run.params.get("version"), "|", last_line[0][:300])
+        return [(run.params["case_id"], run.params["version"]) for run in runs.errored_runs]
+
+    with kbench.client.enable_cache():
+        passes = [evaluate_bank(df)]
+        lost = report_errors(passes[-1])
+        if lost:  # a proxy overload lasts minutes; a second pass after a pause recovers most of the bank
+            print(f"second pass over {len(lost)} prompts after a {SECOND_PASS_PAUSE}s pause")
+            time.sleep(SECOND_PASS_PAUSE)
+            passes.append(evaluate_bank(pd.DataFrame(lost, columns=["case_id", "version"])))
+            lost = report_errors(passes[-1])
+    if len(lost) > MAX_ERROR_SHARE * df.shape[0]:
+        raise RuntimeError(f"{len(lost)} of {df.shape[0]} prompts errored: infrastructure problem, not a score")
+    frames = [p.completed_runs.as_dataframe() for p in passes if len(p.completed_runs)]
+    done = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame(columns=["result"])
     passed = int(done["result"].str.get("runs").sum()) if len(done) else 0
     total = int(len(done))
     rate = passed / total if total else 0.0
