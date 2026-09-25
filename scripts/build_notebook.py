@@ -72,6 +72,10 @@ if ON_KAGGLE:
     target = ["--no-index", "--no-deps", wheels[-1]] if wheels else ["--no-cache-dir", PACKAGE_URL]
     print("installing", target[-1])
     subprocess.run([sys.executable, "-m", "pip", "install", "-q", *target], check=True)
+    try:
+        import matplotlib  # noqa: F401
+    except ImportError:  # the benchmark image ships without it; charts are optional, the tables are not
+        subprocess.run([sys.executable, "-m", "pip", "install", "-q", "matplotlib"], check=False)
 
 import pandas as pd
 import kaggle_benchmarks as kbench
@@ -172,13 +176,14 @@ def bpy_drift_runs(llm, df) -> tuple[float, float]:
     return rate, ci95
 """),
 
-    md("## 6. Dry run: one case, one version"),
+    md("## 6. Dry run: one case, one version\n\nA smoke test of the grading path against the model under test; its record is discarded before the measurement."),
     code("""
 run = bpy_drift_case.run(llm=kbench.llm, case_id="eevee-engine", version="5.0")
 last = RECORDS[-1]
 print("runs:", last["runs"], "| aware:", last["aware"], "| build:", last["blender_build"])
 print("failures:", last["failures"])
 print(last["script"])
+RECORDS.clear()  # the dry run is a smoke test, not part of the measurement
 """),
 
     md("## 7. Model under test\n\nThe task is written for `kbench.llm`, so the same code runs once per model; models are scheduled from the task page or with `kaggle benchmarks tasks run bpy_drift_runs -m <model>`. The models available to this notebook are listed for the record."),
@@ -210,13 +215,18 @@ print("Most common failure lines")
 display(report.failure_reasons(df))
 """),
     code("""
-import matplotlib.pyplot as plt
+try:
+    import matplotlib.pyplot as plt
+except ImportError:  # charts are a convenience here; the cross-model figures come from scripts/aggregate_runs.py
+    plt = None
+    print("matplotlib is not available in this image; skipping the per-model charts")
 
-for metric in ("runs", "aware"):
-    report.plot_drift_curves(df, metric)
-    plt.tight_layout(); plt.savefig(f"drift_{metric}.png", bbox_inches="tight"); plt.show()
-report.plot_category_heatmap(df, "runs")
-plt.tight_layout(); plt.savefig("heatmap_runs.png", bbox_inches="tight"); plt.show()
+if plt is not None:
+    for metric in ("runs", "aware"):
+        report.plot_drift_curves(df, metric)
+        plt.tight_layout(); plt.savefig(f"drift_{metric}.png", bbox_inches="tight"); plt.show()
+    report.plot_category_heatmap(df, "runs")
+    plt.tight_layout(); plt.savefig("heatmap_runs.png", bbox_inches="tight"); plt.show()
 """),
 
     md("## 10. Publish\n\nKeeps only the leaderboard task's files in the working directory, so the Kaggle benchmark is built from `bpy_drift_runs`."),
