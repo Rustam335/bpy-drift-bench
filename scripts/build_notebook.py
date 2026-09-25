@@ -89,7 +89,7 @@ display(gate)
 assert gate["assert passes"].all() and gate["assert failure detected"].all(), "a Blender build is not usable; stop here"
 """),
 
-    md("## 3. Case bank\n\nEach case is one question, asked for every version it applies to. Which API changes are live traps for a case depends on the version (`changedIn <= target`). Where the correct end state itself differs between versions (EEVEE id, solver name, Principled socket names) the assert script is overridden per version."),
+    md("## 3. Case bank\n\nEach case is one question, asked for every version it applies to. Which API changes are live traps for a case depends on the version (`changedIn <= target`). Where the correct end state itself differs between versions (EEVEE id, solver name, Principled socket names, sequencer strips, compositor output) the assert script is overridden per version.\n\nEvery case has a hand-written reference answer in the repository, and `scripts/selfcheck.py` runs each one in every Blender version it lists: a question only ships if it is provably answerable in that version. Two `control` cases use APIs that have not changed since 2.80; failures there measure general bpy competence, not drift."),
     code("""
 CASES = {c.id: c for c in load_cases()}
 eval_df = expand(CASES.values())
