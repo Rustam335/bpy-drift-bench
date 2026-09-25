@@ -1,9 +1,9 @@
 {
-  "id": "hoholalagaul/bpy-drift-bench",
-  "title": "bpy-drift-bench",
-  "code_file": "bpy_drift_bench.ipynb",
+  "id": "hoholalagaul/bpy-drift-gate",
+  "title": "bpy-drift-gate",
+  "code_file": "gate.py",
   "language": "python",
-  "kernel_type": "notebook",
+  "kernel_type": "script",
   "is_private": true,
   "enable_gpu": false,
   "enable_internet": true,

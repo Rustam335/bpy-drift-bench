@@ -23,10 +23,11 @@ bpy_drift/        grading library (pip install -e .)
   blender.py      download / locate / verify / run headless Blender per version
   prompt.py       the one prompt every model gets
   grading.py      grade(answer, case, version) -> runs, aware, failures
-  data/api_changes.json   27 verified changes with the version they happened in
-cases/cases.json  version-agnostic questions + assert scripts (overrides per version where the correct state differs)
+  data/api_changes.json   32 verified changes with the version they happened in
+  data/cases.json         version-agnostic questions + assert scripts (overrides per version where the correct state differs)
+  reference/              hand-written answers per case (and per version where they differ), proven by scripts/selfcheck.py
 notebooks/        the Kaggle notebook and its kernel-metadata.json
-scripts/          smoke_blender.py — the day-1 gate: every target build starts and asserts work
+scripts/          smoke_blender.py (every target build starts and asserts work) · selfcheck.py (every reference answer passes its assert in every version)
 tests/            pytest
 ```
 

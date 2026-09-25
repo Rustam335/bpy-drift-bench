@@ -322,5 +322,53 @@
     "after": "tree = bpy.data.node_groups.new(\"Compositing\", \"CompositorNodeTree\")\nscene.compositing_node_group = tree",
     "sourceUrl": "https://developer.blender.org/docs/release_notes/5.0/python_api/",
     "area": "render"
+  },
+  {
+    "id": "bpy-data-lamps",
+    "symbol": "bpy.data.lamps / bpy.ops.object.lamp_add",
+    "kind": "renamed",
+    "changedIn": "2.80",
+    "replacement": "bpy.data.lights / bpy.ops.object.light_add",
+    "summary": "Lamps were renamed to Lights in 2.80: the datablock collection is bpy.data.lights, the type is bpy.types.Light, the operator is object.light_add."
+  },
+  {
+    "id": "object-dupli-type",
+    "symbol": "bpy.types.Object.dupli_type / dupli_group",
+    "kind": "renamed",
+    "changedIn": "2.80",
+    "replacement": "bpy.types.Object.instance_type / instance_collection",
+    "summary": "Duplication became instancing in 2.80: dupli_type -> instance_type, dupli_group -> instance_collection, and the enum value is 'COLLECTION' instead of 'GROUP'."
+  },
+  {
+    "id": "scene-cursor-location",
+    "symbol": "bpy.types.Scene.cursor_location",
+    "kind": "renamed",
+    "changedIn": "2.80",
+    "replacement": "bpy.types.Scene.cursor.location",
+    "summary": "The 3D cursor became a struct in 2.80: scene.cursor.location (and cursor.rotation_euler) replaces scene.cursor_location."
+  },
+  {
+    "id": "principled-subsurface-weight-socket",
+    "symbol": "ShaderNodeBsdfPrincipled.inputs[\"Subsurface\"]",
+    "kind": "renamed",
+    "changedIn": "4.0",
+    "replacement": "inputs[\"Subsurface Weight\"]",
+    "summary": "Principled BSDF 4.0 socket renames: 'Subsurface' -> 'Subsurface Weight' (likewise 'Transmission' -> 'Transmission Weight', 'Sheen' -> 'Sheen Weight', 'Clearcoat' -> 'Coat Weight'). Verified in 3.6.23 vs 4.2.23."
+  },
+  {
+    "id": "strips-new-effect-length",
+    "symbol": "SequenceEditor.sequences.new_effect(frame_end=...)",
+    "kind": "behavior",
+    "changedIn": "5.0",
+    "replacement": "SequenceEditor.strips.new_effect(length=...)",
+    "summary": "In 5.0 new_effect() takes `length` instead of `frame_end`; passing frame_end raises TypeError (invalid keyword argument). Verified in 5.0.1 vs 4.5.14."
+  },
+  {
+    "id": "compositor-node-composite",
+    "symbol": "CompositorNodeComposite (nodes.new('CompositorNodeComposite'))",
+    "kind": "removed",
+    "changedIn": "5.0",
+    "replacement": "NodeGroupOutput with an Image output socket on the node group interface",
+    "summary": "5.0 compositor trees are node groups: the Composite output node is gone (nodes.new raises 'Node type CompositorNodeComposite undefined'); the final image is whatever is wired into the Group Output node's 'Image' interface socket. A fresh CompositorNodeTree is empty. Verified in 5.0.1."
   }
 ]

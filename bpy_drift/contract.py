@@ -5,9 +5,11 @@ script proves the code; this module checks the second axis: does WATCH OUT name 
 change that is a trap in the target version, plus its replacement when there is one?
 
 Matching is keyword-based on purpose: a symbol such as `bpy.types.Scene.objects.link` is
-reduced to its last identifier (`link`) or, when it quotes a value (`solver == "FLOAT"`),
-to that quoted value. Alternatives written as `a / b`, `a and b` or `a via b` count if any
-is mentioned. Case, spaces and punctuation are ignored.
+reduced to its last identifier (`link`) and matched as a substring of the punctuation-free
+text. A symbol that quotes a value (`solver == "FLOAT"`, `inputs["Emission Color"]`) is
+matched as that whole word or phrase, so naming `BLENDER_EEVEE_NEXT` does not count as
+naming `BLENDER_EEVEE`: for renamed enum values the direction matters. Alternatives written
+as `a / b`, `a and b` or `a via b` count if any is mentioned. Case and punctuation are ignored.
 """
 
 from __future__ import annotations
@@ -52,6 +54,23 @@ def normalize(text: str) -> str:
     return re.sub(r"[^a-z0-9@*]", "", text.lower())
 
 
+WORD = re.compile(r"[A-Za-z0-9_]+")
+
+
+def words(text: str) -> str:
+    """Lower-case words separated by single spaces, underscores removed inside a word.
+
+    `inputs["Emission Color"]` -> `inputs emission color`; `BLENDER_EEVEE_NEXT` -> `blendereeveenext`.
+    """
+    return " ".join(w.replace("_", "").lower() for w in WORD.findall(text))
+
+
+def mentions_phrase(text: str, phrase: str) -> bool:
+    """Whole-word match of a quoted value: 'BLENDER_EEVEE' is not found inside 'BLENDER_EEVEE_NEXT'."""
+    needle = words(phrase)
+    return bool(needle) and re.search(rf"(?<![a-z0-9]){re.escape(needle)}(?![a-z0-9])", words(text)) is not None
+
+
 def _key_tokens(alternative: str) -> list[str]:
     quoted = QUOTED.findall(alternative)
     if quoted:
@@ -73,6 +92,11 @@ def _key_tokens(alternative: str) -> list[str]:
 def mentions(text: str, symbol_or_replacement: str) -> bool:
     haystack = normalize(text)
     for alternative in ALTERNATIVE_SEPARATORS.split(symbol_or_replacement):
+        quoted = QUOTED.findall(alternative)
+        if quoted:
+            if mentions_phrase(text, quoted[-1]):
+                return True
+            continue
         tokens = _key_tokens(alternative)
         if tokens and any(normalize(t) in haystack for t in tokens):
             return True

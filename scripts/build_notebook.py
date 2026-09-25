@@ -12,6 +12,8 @@ import json
 from pathlib import Path
 
 REPO = "https://github.com/Rustam335/bpy-drift-bench"
+# pip installs from the tarball: the Kaggle worker could not `git clone` (exit 128) in the day-1 gate.
+TARBALL = f"{REPO}/archive/refs/heads/main.tar.gz"
 OUT = Path(__file__).resolve().parents[1] / "notebooks" / "bpy_drift_bench.ipynb"
 
 
@@ -50,10 +52,10 @@ Grading code, case bank and the list of verified API changes: [bpy-drift-bench](
 import os, sys, subprocess, platform, pathlib
 
 ON_KAGGLE = pathlib.Path("/kaggle").exists()
-REPO_URL = "{REPO}"
+PACKAGE_URL = "{TARBALL}"
 
 if ON_KAGGLE:
-    subprocess.run([sys.executable, "-m", "pip", "install", "-q", f"git+{{REPO_URL}}"], check=True)
+    subprocess.run([sys.executable, "-m", "pip", "install", "-q", "--no-cache-dir", PACKAGE_URL], check=True)
     subprocess.run("apt-get install -y -qq libxi6 libxxf86vm1 libxfixes3 libxrender1 libgl1 libegl1 libsm6 libxkbcommon0 > /dev/null",
                    shell=True, check=False)
 

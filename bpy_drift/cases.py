@@ -1,6 +1,7 @@
 """Case bank: one question asked across several Blender versions.
 
-`cases/cases.json` holds version-agnostic questions. Each case names the API changes that
+`bpy_drift/data/cases.json` holds version-agnostic questions (package data, so the installed
+wheel carries the bank). Each case names the API changes that
 could trip a model on it; which of those are live traps depends on the target version
 (`changedIn <= target`). The assert script can be overridden per version when the correct
 end state itself differs between versions (e.g. the EEVEE engine id).
@@ -67,8 +68,9 @@ def load_api_changes() -> dict[str, ApiChange]:
 
 def load_cases(path: str | Path | None = None) -> list[Case]:
     if path is None:
-        path = Path(__file__).resolve().parents[1] / "cases" / "cases.json"
-    raw = json.loads(Path(path).read_text("utf-8"))
+        raw = json.loads(resources.files("bpy_drift").joinpath("data/cases.json").read_text("utf-8"))
+    else:
+        raw = json.loads(Path(path).read_text("utf-8"))
     cases = []
     for c in raw:
         cases.append(Case(

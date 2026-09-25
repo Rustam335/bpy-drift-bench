@@ -39,6 +39,20 @@ def test_mentions_uses_quoted_value_when_symbol_quotes_one():
     assert mentions("FAST was renamed", 'bpy.types.BooleanModifier.solver == "FAST"')
 
 
+def test_mentions_quoted_value_is_direction_aware():
+    # 5.0 renamed BLENDER_EEVEE_NEXT back to BLENDER_EEVEE: naming only the old id must not count as the new one.
+    assert not mentions("BLENDER_EEVEE_NEXT is the id since 4.2", '"BLENDER_EEVEE"')
+    assert mentions("use BLENDER_EEVEE, not BLENDER_EEVEE_NEXT", '"BLENDER_EEVEE"')
+    assert mentions("set engine = 'BLENDER_EEVEE_NEXT'", 'RenderSettings.engine == "BLENDER_EEVEE_NEXT"')
+    assert not mentions("the FASTER path", 'solver == "FAST"')
+
+
+def test_mentions_quoted_phrase_matches_whole_phrase():
+    assert mentions('use inputs["Emission Color"] now', 'inputs["Emission Color"] and inputs["Emission Strength"]')
+    assert mentions("the Emission Strength socket", 'inputs["Emission Color"] and inputs["Emission Strength"]')
+    assert not mentions("the Emission socket was split", 'inputs["Emission Color"]')
+
+
 def test_mentions_dunder_operator_maps_to_symbol():
     assert mentions("use the @ operator", "mathutils.Matrix.__matmul__")
     assert mentions("the * operator no longer multiplies matrices", "mathutils.Matrix.__mul__")

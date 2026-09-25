@@ -1,0 +1,513 @@
+[
+  {
+    "id": "link-object",
+    "category": "scene-object-api",
+    "question": "Create a new mesh object from a single triangle (three vertices, one face), name the object 'Tri', and link it to the current scene so it is visible.",
+    "apiChanges": [
+      "scene-objects-link"
+    ],
+    "versions": [
+      "3.6",
+      "4.2",
+      "4.5",
+      "5.0"
+    ],
+    "assert": "import bpy\no = bpy.data.objects['Tri']\nassert o.type == 'MESH', o.type\nassert o.name in bpy.context.scene.objects, 'Tri is not linked to the scene'\nassert len(o.data.polygons) >= 1"
+  },
+  {
+    "id": "select-active",
+    "category": "scene-object-api",
+    "question": "Deselect everything, then select only the object named 'Cube' and make it the active object.",
+    "apiChanges": [
+      "object-select",
+      "scene-objects-active"
+    ],
+    "versions": [
+      "3.6",
+      "4.2",
+      "4.5",
+      "5.0"
+    ],
+    "assert": "import bpy\nc = bpy.data.objects['Cube']\nassert c.select_get(), 'Cube not selected'\nassert bpy.context.view_layer.objects.active == c, 'Cube not active'\nassert all(not o.select_get() for o in bpy.context.scene.objects if o != c), 'other objects still selected'"
+  },
+  {
+    "id": "matrix-world",
+    "category": "scene-object-api",
+    "question": "Move the object named 'Cube' to location (1, 2, 3), then print the world-space position of each of its vertices by transforming the local coordinates with the object's world matrix.",
+    "apiChanges": [
+      "matrix-multiplication-operator",
+      "scene-update"
+    ],
+    "versions": [
+      "3.6",
+      "4.2",
+      "4.5",
+      "5.0"
+    ],
+    "assert": "import bpy\nc = bpy.data.objects['Cube']\nassert tuple(round(v, 3) for v in c.location) == (1.0, 2.0, 3.0), tuple(c.location)"
+  },
+  {
+    "id": "boolean-apply",
+    "category": "context-override",
+    "question": "Add a UV sphere, then add a Boolean modifier in UNION mode on the object named 'Cube' using the sphere as the cutter, and apply the modifier so the union is baked into Cube's mesh.",
+    "apiChanges": [
+      "bpy-ops-context-override-dict",
+      "boolean-solver-manifold"
+    ],
+    "versions": [
+      "3.6",
+      "4.2",
+      "4.5",
+      "5.0"
+    ],
+    "assert": "import bpy\nc = bpy.data.objects['Cube']\nassert not any(m.type == 'BOOLEAN' for m in c.modifiers), 'Boolean modifier was not applied'\nassert len(c.data.vertices) > 8, 'mesh still has only the original 8 vertices'",
+    "notes": "The override dict form was deprecated in 3.2 and removed in 4.0, so it is a live trap from 4.2 on and merely deprecated in 3.6."
+  },
+  {
+    "id": "emission-material",
+    "category": "principled-sockets",
+    "question": "Create a material named 'Glow' whose Principled BSDF emits orange light with emission strength 5, and assign it to the object named 'Cube'.",
+    "apiChanges": [
+      "principled-emission-socket"
+    ],
+    "versions": [
+      "3.6",
+      "4.2",
+      "4.5",
+      "5.0"
+    ],
+    "assert": "import bpy\nm = bpy.data.materials['Glow']\nassert m.use_nodes\nn = next(n for n in m.node_tree.nodes if n.type == 'BSDF_PRINCIPLED')\nassert n.inputs['Emission Strength'].default_value >= 5, n.inputs['Emission Strength'].default_value\ncol = n.inputs['Emission Color'].default_value\nassert col[0] > 0.5 and col[2] < 0.5, tuple(col)\nassert any(s == m for s in bpy.data.objects['Cube'].data.materials), 'Glow not assigned to Cube'",
+    "assertByVersion": {
+      "3.6": "import bpy\nm = bpy.data.materials['Glow']\nassert m.use_nodes\nn = next(n for n in m.node_tree.nodes if n.type == 'BSDF_PRINCIPLED')\nassert n.inputs['Emission Strength'].default_value >= 5, n.inputs['Emission Strength'].default_value\ncol = n.inputs['Emission'].default_value\nassert col[0] > 0.5 and col[2] < 0.5, tuple(col)\nassert any(s == m for s in bpy.data.objects['Cube'].data.materials), 'Glow not assigned to Cube'"
+    }
+  },
+  {
+    "id": "node-group-sockets",
+    "category": "node-interface",
+    "question": "Create a Geometry Nodes node group named 'MyGroup' with a Geometry input socket, a Float input socket named 'Scale', and a Geometry output socket.",
+    "apiChanges": [
+      "nodetree-inputs-new"
+    ],
+    "versions": [
+      "3.6",
+      "4.2",
+      "4.5",
+      "5.0"
+    ],
+    "assert": "import bpy\ng = bpy.data.node_groups['MyGroup']\nsockets = [i for i in g.interface.items_tree if i.item_type == 'SOCKET']\nassert any(i.in_out == 'INPUT' and i.socket_type == 'NodeSocketGeometry' for i in sockets), 'no Geometry input'\nassert any(i.in_out == 'INPUT' and i.socket_type == 'NodeSocketFloat' and i.name == 'Scale' for i in sockets), 'no Float input named Scale'\nassert any(i.in_out == 'OUTPUT' and i.socket_type == 'NodeSocketGeometry' for i in sockets), 'no Geometry output'",
+    "assertByVersion": {
+      "3.6": "import bpy\ng = bpy.data.node_groups['MyGroup']\nassert any(s.bl_socket_idname == 'NodeSocketGeometry' for s in g.inputs), 'no Geometry input'\nassert any(s.bl_socket_idname == 'NodeSocketFloat' and s.name == 'Scale' for s in g.inputs), 'no Float input named Scale'\nassert any(s.bl_socket_idname == 'NodeSocketGeometry' for s in g.outputs), 'no Geometry output'"
+    }
+  },
+  {
+    "id": "export-obj",
+    "category": "io-operators",
+    "question": "Export only the selected objects to a Wavefront OBJ file. The output path is given by the environment variable BPY_OUT_OBJ (read it with os.environ). Select the object named 'Cube' first.",
+    "apiChanges": [
+      "export-scene-obj"
+    ],
+    "versions": [
+      "3.6",
+      "4.2",
+      "4.5",
+      "5.0"
+    ],
+    "assert": "import os\np = os.environ['BPY_OUT_OBJ']\nassert os.path.exists(p), 'OBJ file was not written'\nassert os.path.getsize(p) > 0, 'OBJ file is empty'",
+    "notes": "3.6 ships both the legacy Python exporter and wm.obj_export; from 4.0 only wm.obj_export exists."
+  },
+  {
+    "id": "auto-smooth",
+    "category": "auto-smooth",
+    "question": "Make the mesh of the object named 'Cube' shade smooth while keeping edges sharp where the angle between faces is above 30 degrees (smooth by angle).",
+    "apiChanges": [
+      "mesh-use-auto-smooth"
+    ],
+    "versions": [
+      "3.6",
+      "4.2",
+      "4.5",
+      "5.0"
+    ],
+    "assert": "import bpy\nc = bpy.data.objects['Cube']\nsmooth_faces = all(p.use_smooth for p in c.data.polygons)\nhas_sharp_attr = 'sharp_edge' in c.data.attributes\nhas_nodes_mod = any(m.type == 'NODES' for m in c.modifiers)\nassert smooth_faces or has_sharp_attr or has_nodes_mod, 'no smooth shading, sharp_edge attribute or Smooth by Angle modifier found'",
+    "assertByVersion": {
+      "3.6": "import bpy, math\nc = bpy.data.objects['Cube']\nassert all(p.use_smooth for p in c.data.polygons), 'faces are not shaded smooth'\nassert c.data.use_auto_smooth, 'use_auto_smooth is off'\nassert abs(math.degrees(c.data.auto_smooth_angle) - 30) < 1, math.degrees(c.data.auto_smooth_angle)"
+    }
+  },
+  {
+    "id": "eevee-engine",
+    "category": "render-engine",
+    "question": "Set the render engine to EEVEE and the render resolution to 640 by 480 pixels.",
+    "apiChanges": [
+      "render-engine-eevee-next",
+      "render-engine-eevee-50"
+    ],
+    "versions": [
+      "3.6",
+      "4.2",
+      "4.5",
+      "5.0"
+    ],
+    "assert": "import bpy\ns = bpy.context.scene\nassert s.render.engine == 'BLENDER_EEVEE', s.render.engine\nassert (s.render.resolution_x, s.render.resolution_y) == (640, 480)",
+    "assertByVersion": {
+      "4.2": "import bpy\ns = bpy.context.scene\nassert s.render.engine == 'BLENDER_EEVEE_NEXT', s.render.engine\nassert (s.render.resolution_x, s.render.resolution_y) == (640, 480)",
+      "4.5": "import bpy\ns = bpy.context.scene\nassert s.render.engine == 'BLENDER_EEVEE_NEXT', s.render.engine\nassert (s.render.resolution_x, s.render.resolution_y) == (640, 480)"
+    },
+    "notes": "The id went BLENDER_EEVEE (<=4.1) -> BLENDER_EEVEE_NEXT (4.2-4.5) -> BLENDER_EEVEE (5.0). A model trained on 4.2-era docs breaks on both 3.6 and 5.0."
+  },
+  {
+    "id": "boolean-fast-solver",
+    "category": "boolean-solver",
+    "question": "Add a second cube as a cutter, then add a Boolean modifier in DIFFERENCE mode on the object named 'Cube' using the fast (non-exact) solver. Do not apply it.",
+    "apiChanges": [
+      "boolean-solver-fast-to-float",
+      "boolean-solver-manifold"
+    ],
+    "versions": [
+      "3.6",
+      "4.2",
+      "4.5",
+      "5.0"
+    ],
+    "assert": "import bpy\nc = bpy.data.objects['Cube']\nm = next(m for m in c.modifiers if m.type == 'BOOLEAN')\nassert m.operation == 'DIFFERENCE', m.operation\nassert m.solver == 'FAST', m.solver",
+    "assertByVersion": {
+      "5.0": "import bpy\nc = bpy.data.objects['Cube']\nm = next(m for m in c.modifiers if m.type == 'BOOLEAN')\nassert m.operation == 'DIFFERENCE', m.operation\nassert m.solver == 'FLOAT', m.solver"
+    }
+  },
+  {
+    "id": "hide-light",
+    "category": "scene-object-api",
+    "question": "Hide the object named 'Light' both in the viewport and in renders, without deleting it. The Cube and Camera must stay visible.",
+    "apiChanges": [
+      "object-hide"
+    ],
+    "versions": [
+      "3.6",
+      "4.2",
+      "4.5",
+      "5.0"
+    ],
+    "assert": "import bpy\nl = bpy.data.objects['Light']\nassert l.hide_render, 'Light still renders'\nassert l.hide_viewport or l.hide_get(), 'Light still visible in viewport'\nc = bpy.data.objects['Cube']\nassert not c.hide_render and not c.hide_get() and not c.hide_viewport, 'Cube was hidden too'"
+  },
+  {
+    "id": "rotate-matrix",
+    "category": "mathutils",
+    "question": "Rotate the object named 'Cube' by 90 degrees around the global Z axis by composing its world matrix with a rotation matrix built with mathutils (do not set rotation_euler directly).",
+    "apiChanges": [
+      "matrix-multiplication-operator"
+    ],
+    "versions": [
+      "3.6",
+      "4.2",
+      "4.5",
+      "5.0"
+    ],
+    "assert": "import bpy, math\nc = bpy.data.objects['Cube']\nassert abs(abs(c.rotation_euler.z) - math.pi / 2) < 1e-3, tuple(c.rotation_euler)\nassert tuple(round(v, 3) for v in c.scale) == (1.0, 1.0, 1.0), tuple(c.scale)",
+    "notes": "Since 2.80 `*` between matrices is element-wise, so the old form does not crash: the assert catches the wrong result."
+  },
+  {
+    "id": "parent-world-location",
+    "category": "scene-object-api",
+    "question": "Add an Empty at (2, 0, 0), parent the object named 'Cube' to it so that Cube's local location is (0, 0, 1), make sure the dependency graph is updated, then print Cube's world-space location.",
+    "apiChanges": [
+      "scene-update"
+    ],
+    "versions": [
+      "3.6",
+      "4.2",
+      "4.5",
+      "5.0"
+    ],
+    "assert": "import bpy\nc = bpy.data.objects['Cube']\nassert c.parent is not None and c.parent.type == 'EMPTY', 'Cube has no Empty parent'\nbpy.context.view_layer.update()\nt = c.matrix_world.translation\nassert tuple(round(v, 3) for v in t) == (2.0, 0.0, 1.0), tuple(t)"
+  },
+  {
+    "id": "import-obj-roundtrip",
+    "category": "io-operators",
+    "question": "Export the object named 'Cube' to a Wavefront OBJ file at the path given by the environment variable BPY_OUT_OBJ (read it with os.environ), then import that file back into the scene so the scene contains a second 8-vertex cube mesh object.",
+    "apiChanges": [
+      "export-scene-obj",
+      "import-scene-obj"
+    ],
+    "versions": [
+      "3.6",
+      "4.2",
+      "4.5",
+      "5.0"
+    ],
+    "assert": "import bpy\ncubes = [o for o in bpy.context.scene.objects if o.type == 'MESH' and len(o.data.vertices) == 8]\nassert len(cubes) >= 2, [o.name for o in bpy.context.scene.objects]"
+  },
+  {
+    "id": "face-normals",
+    "category": "mesh-normals",
+    "question": "Create a mesh object named 'Quad' from four vertices forming a unit square in the XY plane and one face, link it to the scene, make sure its normals are valid, and print each face normal.",
+    "apiChanges": [
+      "mesh-calc-normals"
+    ],
+    "versions": [
+      "3.6",
+      "4.2",
+      "4.5",
+      "5.0"
+    ],
+    "assert": "import bpy\no = bpy.data.objects['Quad']\nassert o.name in bpy.context.scene.objects, 'Quad not linked'\nassert len(o.data.polygons) == 1, len(o.data.polygons)\nn = o.data.polygons[0].normal\nassert abs(abs(n.z) - 1) < 1e-3, tuple(n)"
+  },
+  {
+    "id": "bmesh-icosphere",
+    "category": "mesh-normals",
+    "question": "Using the bmesh module, build an icosphere with 2 subdivisions and radius 1, write it into a new mesh object named 'Ico', link it to the scene, and make sure the mesh normals are up to date.",
+    "apiChanges": [
+      "mesh-calc-normals"
+    ],
+    "versions": [
+      "3.6",
+      "4.2",
+      "4.5",
+      "5.0"
+    ],
+    "assert": "import bpy\no = bpy.data.objects['Ico']\nassert o.name in bpy.context.scene.objects, 'Ico not linked'\nassert len(o.data.polygons) == 80, len(o.data.polygons)"
+  },
+  {
+    "id": "custom-normals-up",
+    "category": "mesh-normals",
+    "question": "Give the mesh of the object named 'Cube' custom split normals that all point straight up along +Z, one per face corner, so that the mesh reports it has custom normals.",
+    "apiChanges": [
+      "mesh-calc-normals-split",
+      "mesh-use-auto-smooth"
+    ],
+    "versions": [
+      "3.6",
+      "4.2",
+      "4.5",
+      "5.0"
+    ],
+    "assert": "import bpy\nme = bpy.data.objects['Cube'].data\nassert me.has_custom_normals, 'no custom normals'\nassert all(n.vector.z > 0.99 for n in me.corner_normals), [tuple(n.vector) for n in me.corner_normals][:4]",
+    "assertByVersion": {
+      "3.6": "import bpy\nme = bpy.data.objects['Cube'].data\nassert me.has_custom_normals, 'no custom normals'\nassert me.use_auto_smooth, 'custom normals are ignored while use_auto_smooth is off'\nme.calc_normals_split()\nassert all(l.normal.z > 0.99 for l in me.loops), [tuple(l.normal) for l in me.loops][:4]"
+    },
+    "notes": "3.6 only honours custom normals with use_auto_smooth on; 4.1 removed that flag and the split-normal calc functions."
+  },
+  {
+    "id": "matte-material",
+    "category": "principled-sockets",
+    "question": "Create a material named 'Matte' whose Principled BSDF has a mid-grey base colour, roughness 1.0 and no specular reflection at all (specular level 0), and assign it to the object named 'Cube'.",
+    "apiChanges": [
+      "principled-specular-socket"
+    ],
+    "versions": [
+      "3.6",
+      "4.2",
+      "4.5",
+      "5.0"
+    ],
+    "assert": "import bpy\nm = bpy.data.materials['Matte']\nassert m.use_nodes\nn = next(n for n in m.node_tree.nodes if n.type == 'BSDF_PRINCIPLED')\nassert any(s == m for s in bpy.data.objects['Cube'].data.materials), 'Matte not assigned to Cube'\nassert n.inputs['Roughness'].default_value >= 0.99\nassert n.inputs['Specular IOR Level'].default_value == 0, n.inputs['Specular IOR Level'].default_value",
+    "assertByVersion": {
+      "3.6": "import bpy\nm = bpy.data.materials['Matte']\nassert m.use_nodes\nn = next(n for n in m.node_tree.nodes if n.type == 'BSDF_PRINCIPLED')\nassert any(s == m for s in bpy.data.objects['Cube'].data.materials), 'Matte not assigned to Cube'\nassert n.inputs['Roughness'].default_value >= 0.99\nassert n.inputs['Specular'].default_value == 0, n.inputs['Specular'].default_value"
+    }
+  },
+  {
+    "id": "skin-material",
+    "category": "principled-sockets",
+    "question": "Create a material named 'Skin' whose Principled BSDF has subsurface scattering with weight 0.3 and a reddish subsurface tint, and assign it to the object named 'Cube'.",
+    "apiChanges": [
+      "principled-subsurface-weight-socket",
+      "principled-subsurface-color-socket"
+    ],
+    "versions": [
+      "3.6",
+      "4.2",
+      "4.5",
+      "5.0"
+    ],
+    "assert": "import bpy\nm = bpy.data.materials['Skin']\nassert m.use_nodes\nn = next(n for n in m.node_tree.nodes if n.type == 'BSDF_PRINCIPLED')\nassert any(s == m for s in bpy.data.objects['Cube'].data.materials), 'Skin not assigned to Cube'\nassert abs(n.inputs['Subsurface Weight'].default_value - 0.3) < 1e-3, n.inputs['Subsurface Weight'].default_value\nbc = n.inputs['Base Color'].default_value\nr = n.inputs['Subsurface Radius'].default_value\nassert (bc[0] > bc[1] and bc[0] > bc[2]) or (r[0] > r[1] and r[0] > r[2]), 'no reddish tint via Base Color or Subsurface Radius'",
+    "assertByVersion": {
+      "3.6": "import bpy\nm = bpy.data.materials['Skin']\nassert m.use_nodes\nn = next(n for n in m.node_tree.nodes if n.type == 'BSDF_PRINCIPLED')\nassert any(s == m for s in bpy.data.objects['Cube'].data.materials), 'Skin not assigned to Cube'\nassert abs(n.inputs['Subsurface'].default_value - 0.3) < 1e-3, n.inputs['Subsurface'].default_value\nsc = n.inputs['Subsurface Color'].default_value\nbc = n.inputs['Base Color'].default_value\nr = n.inputs['Subsurface Radius'].default_value\nassert (sc[0] > sc[1] and sc[0] > sc[2]) or (bc[0] > bc[1] and bc[0] > bc[2]) or (r[0] > r[1] and r[0] > r[2]), 'no reddish tint'"
+    },
+    "notes": "4.0 removed 'Subsurface Color' (tint now comes from Base Color or per-channel Subsurface Radius) and renamed 'Subsurface' to 'Subsurface Weight'."
+  },
+  {
+    "id": "bone-collection",
+    "category": "armature",
+    "question": "Create an armature object named 'Rig' with two bones, 'Root' and 'Arm', where 'Arm' is a child of 'Root', and put 'Arm' in a bone collection named 'Arms'.",
+    "apiChanges": [
+      "bone-layers"
+    ],
+    "versions": [
+      "4.2",
+      "4.5",
+      "5.0"
+    ],
+    "assert": "import bpy\narm = bpy.data.objects['Rig'].data\nassert {'Root', 'Arm'} <= {b.name for b in arm.bones}, [b.name for b in arm.bones]\nassert arm.bones['Arm'].parent == arm.bones['Root'], 'Arm is not a child of Root'\nbc = arm.collections['Arms']\nassert 'Arm' in [b.name for b in bc.bones], 'Arm is not in the Arms collection'",
+    "notes": "Bone collections only exist from 4.0; 3.6 has 32 unnamed layers, so the question has no 3.6 form."
+  },
+  {
+    "id": "transparent-material",
+    "category": "eevee-material",
+    "question": "Create a material named 'Glass' for EEVEE that renders 50 percent transparent: Principled BSDF alpha 0.5, and the material's surface render method set so that alpha blending is actually used instead of opaque rendering. Assign it to the object named 'Cube'.",
+    "apiChanges": [
+      "material-blend-method"
+    ],
+    "versions": [
+      "3.6",
+      "4.2",
+      "4.5",
+      "5.0"
+    ],
+    "assert": "import bpy\nm = bpy.data.materials['Glass']\nassert m.use_nodes\nn = next(n for n in m.node_tree.nodes if n.type == 'BSDF_PRINCIPLED')\nassert any(s == m for s in bpy.data.objects['Cube'].data.materials), 'Glass not assigned to Cube'\nassert abs(n.inputs['Alpha'].default_value - 0.5) < 1e-3, n.inputs['Alpha'].default_value\nassert m.surface_render_method == 'BLENDED', m.surface_render_method",
+    "assertByVersion": {
+      "3.6": "import bpy\nm = bpy.data.materials['Glass']\nassert m.use_nodes\nn = next(n for n in m.node_tree.nodes if n.type == 'BSDF_PRINCIPLED')\nassert any(s == m for s in bpy.data.objects['Cube'].data.materials), 'Glass not assigned to Cube'\nassert abs(n.inputs['Alpha'].default_value - 0.5) < 1e-3, n.inputs['Alpha'].default_value\nassert m.blend_method == 'BLEND', m.blend_method"
+    },
+    "notes": "blend_method survives as a deprecated alias through 5.0 (setting 'BLEND' maps to surface_render_method 'BLENDED'), so this case mostly measures the awareness axis."
+  },
+  {
+    "id": "light-no-shadow",
+    "category": "lighting",
+    "question": "Make the light object named 'Light' cast no shadows in renders, for both Cycles and EEVEE.",
+    "apiChanges": [
+      "light-cycles-cast-shadow"
+    ],
+    "versions": [
+      "3.6",
+      "4.2",
+      "4.5",
+      "5.0"
+    ],
+    "assert": "import bpy\nl = bpy.data.lights['Light']\nassert not l.use_shadow, 'use_shadow is still on'",
+    "assertByVersion": {
+      "3.6": "import bpy\nl = bpy.data.lights['Light']\nassert not l.use_shadow, 'EEVEE use_shadow is still on'\nassert not l.cycles.cast_shadow, 'Cycles cast_shadow is still on'"
+    }
+  },
+  {
+    "id": "linear-keyframes",
+    "category": "animation",
+    "question": "Animate the object named 'Cube': keyframe its location at frame 1 (x = 0) and at frame 24 (x = 5), then set the interpolation of every keyframe on every F-Curve of its action to LINEAR.",
+    "apiChanges": [
+      "action-fcurves-deprecated",
+      "action-fcurves-removed"
+    ],
+    "versions": [
+      "3.6",
+      "4.2",
+      "4.5",
+      "5.0"
+    ],
+    "assert": "import bpy\nc = bpy.data.objects['Cube']\nact = c.animation_data.action\nfcs = list(act.fcurves)\nassert fcs, 'no F-Curves'\nassert all(len(fc.keyframe_points) >= 2 for fc in fcs)\nassert all(kp.interpolation == 'LINEAR' for fc in fcs for kp in fc.keyframe_points), 'not all keyframes are LINEAR'",
+    "assertByVersion": {
+      "5.0": "import bpy\nfrom bpy_extras import anim_utils\nc = bpy.data.objects['Cube']\nact = c.animation_data.action\ncb = anim_utils.action_get_channelbag_for_slot(act, c.animation_data.action_slot)\nfcs = list(cb.fcurves)\nassert fcs, 'no F-Curves'\nassert all(len(fc.keyframe_points) >= 2 for fc in fcs)\nassert all(kp.interpolation == 'LINEAR' for fc in fcs for kp in fc.keyframe_points), 'not all keyframes are LINEAR'"
+    },
+    "notes": "Action.fcurves still works in 4.5 (deprecated legacy API; slots arrived in 4.4) and is gone in 5.0."
+  },
+  {
+    "id": "color-strip",
+    "category": "sequencer",
+    "question": "Create the scene's sequence editor if it does not exist and add a colour strip named 'Red' on channel 1 that starts at frame 1 and is exactly 50 frames long, with a pure red colour. Then print the names of all strips in the sequencer.",
+    "apiChanges": [
+      "sequence-to-strip",
+      "strips-new-effect-length"
+    ],
+    "versions": [
+      "3.6",
+      "4.2",
+      "4.5",
+      "5.0"
+    ],
+    "assert": "import bpy\nse = bpy.context.scene.sequence_editor\ns = se.strips_all['Red']\nassert s.channel == 1 and s.frame_final_start == 1, (s.channel, s.frame_final_start)\nassert s.frame_final_duration == 50, s.frame_final_duration\nassert s.color[0] > 0.9 and s.color[1] < 0.1 and s.color[2] < 0.1, tuple(s.color)",
+    "assertByVersion": {
+      "3.6": "import bpy\nse = bpy.context.scene.sequence_editor\ns = se.sequences_all['Red']\nassert s.channel == 1 and s.frame_final_start == 1, (s.channel, s.frame_final_start)\nassert s.frame_final_duration == 50, s.frame_final_duration\nassert s.color[0] > 0.9 and s.color[1] < 0.1 and s.color[2] < 0.1, tuple(s.color)",
+      "4.2": "import bpy\nse = bpy.context.scene.sequence_editor\ns = se.sequences_all['Red']\nassert s.channel == 1 and s.frame_final_start == 1, (s.channel, s.frame_final_start)\nassert s.frame_final_duration == 50, s.frame_final_duration\nassert s.color[0] > 0.9 and s.color[1] < 0.1 and s.color[2] < 0.1, tuple(s.color)"
+    },
+    "notes": "4.4 renamed Sequence to Strip (sequences_all -> strips_all, old names kept as aliases in 4.5); 5.0 dropped the aliases and changed new_effect(frame_end=) to new_effect(length=)."
+  },
+  {
+    "id": "compositor-glare",
+    "category": "compositor",
+    "question": "Enable compositing nodes for the scene and insert a Glare node between the Render Layers node and the compositor's final output node, connected on both sides.",
+    "apiChanges": [
+      "scene-node-tree",
+      "compositor-node-composite"
+    ],
+    "versions": [
+      "3.6",
+      "4.2",
+      "4.5",
+      "5.0"
+    ],
+    "assert": "import bpy\ns = bpy.context.scene\nassert s.use_nodes, 'use_nodes is off'\nnt = s.node_tree\ng = next(n for n in nt.nodes if n.type == 'GLARE')\nassert any(l.to_node == g and l.from_node.type == 'R_LAYERS' for l in nt.links), 'Glare input not fed by Render Layers'\nassert any(l.from_node == g and l.to_node.type == 'COMPOSITE' for l in nt.links), 'Glare output not wired to Composite'",
+    "assertByVersion": {
+      "5.0": "import bpy\ns = bpy.context.scene\nnt = s.compositing_node_group\nassert nt is not None, 'scene has no compositing node group'\ng = next(n for n in nt.nodes if n.type == 'GLARE')\nassert any(l.to_node == g and l.from_node.type == 'R_LAYERS' for l in nt.links), 'Glare input not fed by Render Layers'\nassert any(l.from_node == g and l.to_node.type == 'GROUP_OUTPUT' for l in nt.links), 'Glare output not wired to the Group Output'"
+    },
+    "notes": "5.0 turned the compositor into a node group: scene.node_tree -> scene.compositing_node_group, the Composite node is replaced by Group Output with an Image interface socket, and a new tree starts empty."
+  },
+  {
+    "id": "point-light",
+    "category": "lighting",
+    "question": "Add a point light object named 'Key' at location (4, -4, 6) with a power of 1000 W and a slightly warm colour.",
+    "apiChanges": [
+      "bpy-data-lamps"
+    ],
+    "versions": [
+      "3.6",
+      "4.2",
+      "4.5",
+      "5.0"
+    ],
+    "assert": "import bpy\no = bpy.data.objects['Key']\nassert o.type == 'LIGHT' and o.data.type == 'POINT', (o.type, getattr(o.data, 'type', None))\nassert tuple(round(v, 3) for v in o.location) == (4.0, -4.0, 6.0), tuple(o.location)\nassert abs(o.data.energy - 1000) < 1e-3, o.data.energy\nassert o.name in bpy.context.scene.objects"
+  },
+  {
+    "id": "instance-collection",
+    "category": "scene-object-api",
+    "question": "Create a new collection named 'Parts', move the object named 'Cube' into it, then add an Empty object named 'Inst' that instances the 'Parts' collection.",
+    "apiChanges": [
+      "object-dupli-type",
+      "scene-objects-link"
+    ],
+    "versions": [
+      "3.6",
+      "4.2",
+      "4.5",
+      "5.0"
+    ],
+    "assert": "import bpy\ncol = bpy.data.collections['Parts']\nassert 'Cube' in col.objects, 'Cube is not in Parts'\ni = bpy.data.objects['Inst']\nassert i.type == 'EMPTY' and i.instance_type == 'COLLECTION', (i.type, i.instance_type)\nassert i.instance_collection == col, i.instance_collection\nassert i.name in bpy.context.scene.objects"
+  },
+  {
+    "id": "cursor-snap",
+    "category": "scene-object-api",
+    "question": "Move the 3D cursor to (1, 1, 1), then place the object named 'Cube' at the cursor's location by reading it back from the scene.",
+    "apiChanges": [
+      "scene-cursor-location"
+    ],
+    "versions": [
+      "3.6",
+      "4.2",
+      "4.5",
+      "5.0"
+    ],
+    "assert": "import bpy\ns = bpy.context.scene\nassert tuple(round(v, 3) for v in s.cursor.location) == (1.0, 1.0, 1.0), tuple(s.cursor.location)\nassert tuple(round(v, 3) for v in bpy.data.objects['Cube'].location) == (1.0, 1.0, 1.0)"
+  },
+  {
+    "id": "array-modifier",
+    "category": "control",
+    "question": "Add an Array modifier to the object named 'Cube' with 3 copies and a relative offset of 1.5 along X (0 along Y and Z). Do not apply it.",
+    "apiChanges": [],
+    "versions": [
+      "3.6",
+      "4.2",
+      "4.5",
+      "5.0"
+    ],
+    "assert": "import bpy\nc = bpy.data.objects['Cube']\nm = next(m for m in c.modifiers if m.type == 'ARRAY')\nassert m.count == 3, m.count\nassert m.use_relative_offset and tuple(round(v, 3) for v in m.relative_offset_displace) == (1.5, 0.0, 0.0), tuple(m.relative_offset_displace)",
+    "notes": "Control case: this API has not changed since 2.80. Failures here are not drift."
+  },
+  {
+    "id": "bevel-subsurf",
+    "category": "control",
+    "question": "On the object named 'Cube', add a Bevel modifier with width 0.1 and 3 segments, then a Subdivision Surface modifier with 2 viewport levels, in that order. Do not apply them.",
+    "apiChanges": [],
+    "versions": [
+      "3.6",
+      "4.2",
+      "4.5",
+      "5.0"
+    ],
+    "assert": "import bpy\nc = bpy.data.objects['Cube']\nmods = [m for m in c.modifiers if m.type in ('BEVEL', 'SUBSURF')]\nassert [m.type for m in mods] == ['BEVEL', 'SUBSURF'], [m.type for m in c.modifiers]\nb, s = mods\nassert abs(b.width - 0.1) < 1e-4 and b.segments == 3, (b.width, b.segments)\nassert s.levels == 2, s.levels",
+    "notes": "Control case: unchanged API."
+  }
+]
