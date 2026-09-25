@@ -45,23 +45,23 @@ ON_KAGGLE = pathlib.Path("/kaggle").exists()
 PACKAGE_URL = "https://github.com/Rustam335/bpy-drift-bench/archive/refs/heads/main.tar.gz"
 
 if ON_KAGGLE:
-    wheels = sorted(glob.glob("/kaggle/input/*/bpy_drift-*.whl"))
+    # Datasets mount at /kaggle/input/<slug> in notebooks and /kaggle/input/datasets/<owner>/<slug> in benchmark tasks.
+    wheels = sorted(glob.glob("/kaggle/input/**/bpy_drift-*.whl", recursive=True))
     target = ["--no-index", "--no-deps", wheels[-1]] if wheels else ["--no-cache-dir", PACKAGE_URL]
+    print("installing", target[-1])
     subprocess.run([sys.executable, "-m", "pip", "install", "-q", *target], check=True)
-    # The Kaggle image already ships the X11/GL stubs a headless Blender links against (the gate run proved it
-    # with no network at all), so apt is only attempted when the worker can resolve the mirror.
-    try:
-        socket.gethostbyname("archive.ubuntu.com")
-        subprocess.run("apt-get install -y -qq libxi6 libxxf86vm1 libxfixes3 libxrender1 libgl1 libegl1 libsm6 libxkbcommon0 > /dev/null 2>&1",
-                       shell=True, check=False)
-    except OSError:
-        pass
 
 import pandas as pd
 import kaggle_benchmarks as kbench
-from bpy_drift import (RELEASES, ensure_blender, verify_build, run_script, load_cases, expand,
+from bpy_drift import (RELEASES, ensure_blender, ensure_runtime_libs, verify_build, run_script, load_cases, expand,
                        SYSTEM_PROMPT, build_user_prompt, grade)
 from bpy_drift import report
+
+if ON_KAGGLE:
+    # Headless Blender still dlopens a few X11/GL stubs; the benchmark image lacks libXxf86vm. apt first, and if
+    # that fails the .deb files are unpacked into the cache and handed to Blender through LD_LIBRARY_PATH.
+    still_missing = ensure_runtime_libs()
+    assert not still_missing, f"shared libraries Blender needs are unavailable: {still_missing}"
 
 pd.set_option("display.max_colwidth", 120)
 os.environ.setdefault("RENDER_SUBRUNS", "False")

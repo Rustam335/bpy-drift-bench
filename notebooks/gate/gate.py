@@ -50,29 +50,23 @@ mark("pip install (attached wheel, else GitHub tarball)")
 # A tarball needs no git on the worker; the git+https form failed to clone on Kaggle (exit 128).
 TARBALL = "https://github.com/Rustam335/bpy-drift-bench/archive/refs/heads/main.tar.gz"
 import glob
-wheels = sorted(glob.glob("/kaggle/input/*/bpy_drift-*.whl"))
+wheels = sorted(glob.glob("/kaggle/input/**/bpy_drift-*.whl", recursive=True))
 target = ["--no-index", "--no-deps", wheels[-1]] if wheels else ["--no-cache-dir", TARBALL]
 print("installing from", target[-1])
 pip = subprocess.run([sys.executable, "-m", "pip", "install", *target], capture_output=True, text=True)
 print("pip returncode", pip.returncode)
 print((pip.stdout or "")[-800:], (pip.stderr or "")[-2500:])
 
-mark("apt libraries")
 try:
-    socket.gethostbyname("archive.ubuntu.com")
-    apt = subprocess.run("apt-get install -y -qq libxi6 libxxf86vm1 libxfixes3 libxrender1 libgl1 libegl1 libsm6 libxkbcommon0",
-                         shell=True, capture_output=True, text=True)
-    print("apt returncode", apt.returncode, (apt.stdout + apt.stderr)[-600:])
-except OSError:
-    print("no network: skipping apt (the image already has the X11/GL stubs Blender needs)")
-
-try:
-    from bpy_drift import RELEASES, ensure_blender, verify_build, run_script  # noqa: E402
+    from bpy_drift import RELEASES, ensure_blender, ensure_runtime_libs, verify_build, run_script  # noqa: E402
     from bpy_drift.blender import cache_root  # noqa: E402
 except ImportError as e:
     print("bpy_drift not importable, stopping before Blender:", e)
     print("GATE FAILED")
     raise SystemExit(0)
+
+mark("shared libraries")
+print("still missing:", ensure_runtime_libs() or "none")
 
 PROBE = "import bpy\nbpy.data.objects['Cube'].location.x = 1.0"
 PASSING = "import bpy\nassert bpy.data.objects['Cube'].location.x == 1.0"

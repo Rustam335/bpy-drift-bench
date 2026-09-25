@@ -23,6 +23,13 @@ def test_archive_dirs_splits_on_pathsep(monkeypatch):
     assert [p.name for p in archive_dirs()] == ["dir-a", "dir-b"]
 
 
+def test_runtime_lib_table_matches_the_apt_package_list():
+    from bpy_drift.blender import APT_PACKAGES, RUNTIME_LIBS, missing_runtime_libs
+    assert set(RUNTIME_LIBS.values()) == set(APT_PACKAGES.split())
+    if os.name == "nt":
+        assert missing_runtime_libs() == []  # only Linux builds link against these
+
+
 def test_blender_reason_prefers_the_exception_line_from_either_stream():
     # Blender 3.6 prints the traceback to stdout and only its own notice to stderr.
     stderr_36 = "Error: script failed, file: '/tmp/x/case.py', exiting.\n"

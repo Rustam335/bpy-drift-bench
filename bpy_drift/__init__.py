@@ -7,14 +7,16 @@ Two verdicts per (case, version, model):
 
 from .cases import Case, load_cases, expand, expected_changes, version_key
 from .contract import split_blocks, extract_script, check_watch_out, mentions
-from .blender import RELEASES, ensure_blender, verify_build, run_script, blender_reason, RunOutcome
+from .blender import (RELEASES, ensure_blender, ensure_runtime_libs, missing_runtime_libs, verify_build,
+                      run_script, blender_reason, RunOutcome)
 from .prompt import SYSTEM_PROMPT, build_user_prompt
 from .grading import grade, GradeResult
 
 __all__ = [
     "Case", "load_cases", "expand", "expected_changes", "version_key",
     "split_blocks", "extract_script", "check_watch_out", "mentions",
-    "RELEASES", "ensure_blender", "verify_build", "run_script", "blender_reason", "RunOutcome",
+    "RELEASES", "ensure_blender", "ensure_runtime_libs", "missing_runtime_libs", "verify_build", "run_script",
+    "blender_reason", "RunOutcome",
     "SYSTEM_PROMPT", "build_user_prompt",
     "grade", "GradeResult",
 ]

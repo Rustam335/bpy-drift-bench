@@ -214,3 +214,70 @@ def _text(b) -> str:
     if b is None:
         return ""
     return b if isinstance(b, str) else b.decode("utf-8", "replace")
+
+
+# Shared library -> Debian/Ubuntu package. Headless Blender still dlopens these X11/GL stubs; the Kaggle
+# benchmark image (unlike the plain notebook image) ships without libXxf86vm.
+RUNTIME_LIBS = {
+    "libXxf86vm.so.1": "libxxf86vm1",
+    "libXi.so.6": "libxi6",
+    "libXfixes.so.3": "libxfixes3",
+    "libXrender.so.1": "libxrender1",
+    "libGL.so.1": "libgl1",
+    "libEGL.so.1": "libegl1",
+    "libSM.so.6": "libsm6",
+    "libxkbcommon.so.0": "libxkbcommon0",
+}
+
+
+def missing_runtime_libs(extra_dirs: list[Path] | None = None) -> list[str]:
+    """Names from RUNTIME_LIBS that neither the loader cache nor `extra_dirs` provide."""
+    if platform.system() != "Linux":
+        return []
+    out = subprocess.run(["ldconfig", "-p"], capture_output=True, text=True)
+    known = out.stdout or ""
+    missing = []
+    for lib in RUNTIME_LIBS:
+        if lib in known:
+            continue
+        if any(next(d.rglob(lib), None) for d in (extra_dirs or []) if d.is_dir()):
+            continue
+        missing.append(lib)
+    return missing
+
+
+def _sh(cmd: str, timeout_s: int = 600) -> subprocess.CompletedProcess:
+    return subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=timeout_s)
+
+
+def ensure_runtime_libs(log=print) -> list[str]:
+    """Make Blender's shared-library dependencies loadable; returns whatever is still missing.
+
+    1. nothing to do when `ldconfig -p` already lists every library;
+    2. `apt-get install` (root on Kaggle; output is logged, not hidden);
+    3. otherwise `apt-get download` + `dpkg -x` into the cache root and prepend that directory to
+       LD_LIBRARY_PATH, which run_script passes on to the Blender process. No root needed.
+    """
+    lib_root = cache_root() / "libs"
+    lib_dirs = [lib_root]
+    missing = missing_runtime_libs(lib_dirs)
+    if not missing:
+        return []
+    packages = " ".join(sorted({RUNTIME_LIBS[l] for l in missing}))
+    log(f"missing shared libraries: {' '.join(missing)}; installing {packages}")
+    update = _sh("apt-get update -qq")
+    install = _sh(f"DEBIAN_FRONTEND=noninteractive apt-get install -y -qq {packages}")
+    log(f"apt-get update rc={update.returncode}; install rc={install.returncode} "
+        f"{(install.stdout + install.stderr).strip()[-300:]}")
+    missing = missing_runtime_libs(lib_dirs)
+    if not missing:
+        return []
+    lib_root.mkdir(parents=True, exist_ok=True)
+    download = _sh(f"cd {lib_root} && apt-get download {packages} && for d in *.deb; do dpkg -x \"$d\" .; done")
+    log(f"apt-get download + dpkg -x rc={download.returncode} {(download.stdout + download.stderr).strip()[-300:]}")
+    so_dirs = sorted({p.parent for p in lib_root.rglob("*.so*")})
+    if so_dirs:
+        current = os.environ.get("LD_LIBRARY_PATH", "")
+        os.environ["LD_LIBRARY_PATH"] = os.pathsep.join([*map(str, so_dirs), current] if current else map(str, so_dirs))
+        log(f"LD_LIBRARY_PATH += {':'.join(map(str, so_dirs))}")
+    return missing_runtime_libs(lib_dirs)
