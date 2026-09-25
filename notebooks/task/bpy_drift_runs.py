@@ -129,16 +129,34 @@ print(build_user_prompt("4.2", CASES["eevee-engine"].question))
 # ## 5. Task definition
 #
 # One sub-task per (case, version) prompt, and the leaderboard task that evaluates the whole bank for one model and returns the run rate with a 95% confidence interval. Every graded answer, with its script, failure line and awareness verdict, is kept in `RECORDS` for the analysis below.
+#
+# The model proxy occasionally answers `429 heavy load` for a whole batch, and kbench forces `max_attempts=1` inside a nested evaluation, so the prompt call retries with backoff here. A prompt that still fails is an infrastructure error, not a model error: it is reported and left out of the denominator, and if more than a tenth of the bank is lost the run aborts instead of recording a misleading score.
 
 # %%
+import time
+
 RECORDS = []
+RETRY_DELAYS = (5, 10, 20, 40, 60, 90)  # seconds between attempts; about four minutes in total
+MAX_ERROR_SHARE = 0.10
+
+
+def prompt_with_retry(llm, message: str) -> str:
+    for attempt, delay in enumerate(RETRY_DELAYS + (None,)):
+        try:
+            return llm.prompt(message, temperature=0)
+        except Exception as exc:  # noqa: BLE001 - the proxy raises its own error types; the message carries the status
+            if delay is None:
+                raise
+            print(f"  prompt attempt {attempt + 1} failed ({str(exc)[:120]}); retrying in {delay}s")
+            time.sleep(delay)
+
 
 @kbench.task(store_task=False)
 def bpy_drift_case(llm, case_id: str, version: str) -> dict:
     """Ask one question for one Blender version and grade the answer inside that Blender."""
     case = CASES[case_id]
     with kbench.chats.new(name=f"{case_id} @ {version}", system_instructions=SYSTEM_PROMPT):
-        answer = llm.prompt(build_user_prompt(version, case.question), temperature=0)
+        answer = prompt_with_retry(llm, build_user_prompt(version, case.question))
     result = grade(answer, case, version, binary=BLENDER[version])
     RECORDS.append({"model": llm.name, "category": case.category, "answer": answer, **result.as_dict()})
     return {"case_id": case_id, "version": version, "runs": result.runs, "aware": result.aware,
@@ -150,19 +168,22 @@ def bpy_drift_case(llm, case_id: str, version: str) -> dict:
     description="How many Blender Python scripts run in the exact Blender version they were written for (3.6, 4.2, 4.5, 5.0).",
 )
 def bpy_drift_runs(llm, df) -> tuple[float, float]:
-    """Run rate over all prompts (a prompt that errors counts as failed) with a 95% normal-approximation CI."""
+    """Run rate over the graded prompts with a 95% normal-approximation CI; prompts lost to proxy errors are excluded."""
     with kbench.client.enable_cache():
         runs = bpy_drift_case.evaluate(
-            llm=[llm], evaluation_data=df, on_failure="continue", max_attempts=2, retry_delay=5,
+            llm=[llm], evaluation_data=df, on_failure="continue", max_attempts=1,
             n_jobs=1, remove_run_files=True,  # every grade launches a Blender process
         )
     print(f"completed: {len(runs.completed_runs)}  errored: {len(runs.errored_runs)}")
     for run in runs.errored_runs:
-        print("  errored:", run.params, (run.error_message or "")[:200])
+        last_line = (run.error_message or "").strip().splitlines()[-1:] or ["(no message)"]
+        print("  errored:", run.params.get("case_id"), run.params.get("version"), "|", last_line[0][:300])
+    if len(runs.errored_runs) > MAX_ERROR_SHARE * df.shape[0]:
+        raise RuntimeError(f"{len(runs.errored_runs)} of {df.shape[0]} prompts errored: infrastructure problem, not a score")
     done = runs.completed_runs.as_dataframe()
     passed = int(done["result"].str.get("runs").sum()) if len(done) else 0
-    total = int(df.shape[0])
-    rate = passed / total
+    total = int(len(done))
+    rate = passed / total if total else 0.0
     ci95 = 1.96 * (rate * (1 - rate) / total) ** 0.5
     print(f"runs: {passed} of {total} prompts")
     return rate, ci95
