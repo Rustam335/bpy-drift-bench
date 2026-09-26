@@ -1,7 +1,11 @@
 """Merge the per-model outputs of the Kaggle benchmark runs into the cross-model tables and charts.
 
     kaggle benchmarks tasks download bpy_drift_runs -o runs/
-    python scripts/aggregate_runs.py runs/ out/
+    python scripts/aggregate_runs.py runs/bpy-drift-runs/6 runs/out/
+
+Point it at ONE task version: `tasks download` keeps every version side by side, and the leaderboard
+must come from a single version so every model saw the same notebook. Files under the output folder are
+skipped, so re-running does not feed the previous merge back in.
 
 Every model run writes records.jsonl (one graded answer per line, model name included) into its
 working directory; `tasks download` puts each run in its own folder. This script finds every
@@ -31,9 +35,11 @@ import pandas as pd  # noqa: E402
 from bpy_drift import report  # noqa: E402
 
 
-def load_records(root: Path) -> list[dict]:
+def load_records(root: Path, skip: Path | None = None) -> list[dict]:
     records: list[dict] = []
     for path in sorted(root.rglob("records.jsonl")):
+        if skip is not None and skip.resolve() in path.resolve().parents:
+            continue
         with path.open(encoding="utf-8") as fh:
             rows = [json.loads(line) for line in fh if line.strip()]
         print(f"{path}: {len(rows)} records, models {sorted({r['model'] for r in rows})}")
@@ -43,7 +49,7 @@ def load_records(root: Path) -> list[dict]:
 
 def main(src: str, dst: str) -> int:
     root, out = Path(src), Path(dst)
-    records = load_records(root)
+    records = load_records(root, skip=out)
     if not records:
         print(f"no records.jsonl under {root}")
         return 1
