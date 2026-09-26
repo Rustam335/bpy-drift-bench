@@ -16,6 +16,15 @@ def test_split_blocks_finds_watch_out_heading_variants():
 
 def test_split_blocks_without_watch_out():
     assert split_blocks("```python\nx=1\n```").watch_out is None
+    assert split_blocks("```python\nx=1\n```\nThat is all.").watch_out is None
+
+
+def test_split_blocks_takes_bare_bullets_after_the_fence_as_watch_out():
+    text = "```python\nx=1\n```\n\n- bpy.ops.export_scene.obj: 3.6: replaced by bpy.ops.wm.obj_export\n"
+    blocks = split_blocks(text)
+    assert blocks.watch_out.strip().startswith("- bpy.ops.export_scene.obj")
+    assert blocks.answer.endswith("```")
+    assert split_blocks("```python\nx=1\n```\n- none").watch_out.strip() == "- none"
 
 
 def test_extract_script_prefers_fenced_block():

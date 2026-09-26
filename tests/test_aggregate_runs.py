@@ -19,3 +19,16 @@ def test_load_records_skips_the_output_folder(tmp_path):
     rows = load_records(tmp_path, skip=tmp_path / "out")
 
     assert [r["model"] for r in rows] == ["m"]
+
+
+def test_regrade_aware_uses_the_current_parser_on_stored_answers():
+    from aggregate_runs import regrade_aware
+
+    answer = "```python\nimport bpy\n```\n- bpy.ops.export_scene.obj: removed in 4.0, use bpy.ops.wm.obj_export\n"
+    stale = {"answer": answer, "expected": ["export-scene-obj"], "aware": False,
+             "failures": ["No WATCH OUT block in the answer.", "Blender: AttributeError: x"]}
+
+    (row,) = regrade_aware([stale])
+
+    assert row["aware"] is True
+    assert row["failures"] == ["Blender: AttributeError: x"]

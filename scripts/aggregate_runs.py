@@ -11,7 +11,7 @@ Every model run writes records.jsonl (one graded answer per line, model name inc
 working directory; `tasks download` puts each run in its own folder. This script finds every
 records.jsonl below the input folder, concatenates them, and writes:
 
-    out/records.jsonl        every graded answer, all models
+    out/records.jsonl        every graded answer, all models (aware axis re-graded by the current parser)
     out/results.csv          the same without answer text and stderr
     out/runs_by_version.csv  run rate per model x version (+ all)
     out/aware_by_version.csv awareness rate per model x version
@@ -33,6 +33,21 @@ import matplotlib.pyplot as plt  # noqa: E402
 import pandas as pd  # noqa: E402
 
 from bpy_drift import report  # noqa: E402
+from bpy_drift.cases import load_api_changes  # noqa: E402
+from bpy_drift.contract import check_watch_out, split_blocks  # noqa: E402
+
+
+def regrade_aware(records: list[dict]) -> list[dict]:
+    """Re-run the awareness check on the stored answers so every model, whichever notebook version
+    graded it, is judged by the current parser. The runs axis is untouched: that needs Blender."""
+    known = load_api_changes()
+    out = []
+    for r in records:
+        expected = [known[i] for i in r.get("expected", []) if i in known]
+        aware_failures = check_watch_out(split_blocks(r.get("answer") or "").watch_out, expected)
+        blender_failures = [f for f in r.get("failures", []) if not f.startswith(("WATCH OUT", "No WATCH OUT"))]
+        out.append({**r, "aware": not aware_failures, "failures": aware_failures + blender_failures})
+    return out
 
 
 def load_records(root: Path, skip: Path | None = None) -> list[dict]:
@@ -53,6 +68,9 @@ def main(src: str, dst: str) -> int:
     if not records:
         print(f"no records.jsonl under {root}")
         return 1
+    before = sum(bool(r.get("aware")) for r in records)
+    records = regrade_aware(records)
+    print(f"aware re-graded with the current parser: {before} -> {sum(r['aware'] for r in records)} aware answers")
     out.mkdir(parents=True, exist_ok=True)
     df = report.records_frame(records)
     df = df.drop_duplicates(subset=["model", "case_id", "version"], keep="last")

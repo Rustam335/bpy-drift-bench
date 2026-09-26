@@ -34,11 +34,20 @@ class Blocks:
     watch_out: str | None
 
 
+BULLET = re.compile(r"^\s*[-*]\s+\S", re.M)
+
+
 def split_blocks(text: str) -> Blocks:
+    """The WATCH OUT section: from its heading to the end, or, when the heading is missing, the
+    bullet list that follows the last closing fence (some models drop the heading and answer
+    `- none` or `- <change>` bare; the axis grades what they know, not whether they wrote the word)."""
     m = re.search(r"^\s*(?:#+\s*)?(?:\*\*)?WATCH OUT\b", text, re.M)
-    if not m:
-        return Blocks(answer=text, watch_out=None)
-    return Blocks(answer=text[: m.start()], watch_out=text[m.start():])
+    if m:
+        return Blocks(answer=text[: m.start()], watch_out=text[m.start():])
+    head, sep, tail = text.rpartition("```")
+    if sep and BULLET.search(tail):
+        return Blocks(answer=head + sep, watch_out=tail)
+    return Blocks(answer=text, watch_out=None)
 
 
 def extract_script(text: str) -> str:
