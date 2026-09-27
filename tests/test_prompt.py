@@ -23,3 +23,5 @@ def test_is_truncated_only_within_the_margin_of_the_cap():
     assert not is_truncated(8074, 8192)
     assert not is_truncated(None, 8192)
     assert not is_truncated(8188, 16384)
+    # usage summed over a cut first call (16380) and a completed retry (18829), stored under the doubled cap
+    assert not is_truncated(35209, 32768)

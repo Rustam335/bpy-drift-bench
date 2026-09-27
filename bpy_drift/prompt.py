@@ -40,5 +40,8 @@ def output_cap(model_name: str) -> int:
 
 
 def is_truncated(output_tokens: int | None, cap: int, margin: int = CAP_MARGIN) -> bool:
-    """True when the answer stopped at the output cap: an infrastructure limit, not a model error."""
-    return output_tokens is not None and output_tokens >= cap - margin
+    """True when the answer stopped at the output cap: an infrastructure limit, not a model error.
+
+    A single call cannot exceed its cap by more than a few tokens, so a count far above the cap is the summed
+    usage of a truncated first call and a completed second one (the notebook stores both under the final cap)."""
+    return output_tokens is not None and cap - margin <= output_tokens <= cap + margin
