@@ -140,28 +140,22 @@ RETRY_DELAYS = (5, 10, 20, 40, 60, 90)  # seconds between attempts; about four m
 MAX_ERROR_SHARE = 0.10
 SECOND_PASS_PAUSE = 180  # seconds
 # The proxy reserves quota for the worst case output before every call (its default is the model maximum, which
-# produced 403 "estimated cost exceeds quota" against the daily inference budget). Answers here are a short script
-# plus a few bullets, under 600 tokens for every model seen so far; reasoning models spend their thinking inside
-# the same budget and get more room.
-MAX_OUTPUT_TOKENS = 8192
-REASONING_OUTPUT_TOKENS = 16384
-REASONING_MARKERS = ("deepseek-r1", "thinking", "reasoning", "gpt-5", "gpt-6", "grok")
-
-
-def output_cap(model_name: str) -> int:
-    return REASONING_OUTPUT_TOKENS if any(m in model_name.lower() for m in REASONING_MARKERS) else MAX_OUTPUT_TOKENS
+# produced 403 "estimated cost exceeds quota" against the daily inference budget), so max_tokens is capped per model
+# (bpy_drift.prompt.output_cap: 8192, 16384 for models that think inside the same budget). An answer that stops at
+# the cap is asked once more with twice the room; if it is cut again the prompt counts as lost, not as a failure.
+from bpy_drift.prompt import is_truncated, output_cap
 
 
 CIRCUIT_BREAKER = 3  # consecutive prompts lost after every attempt: the proxy is out of quota, stop waiting
 _consecutive_losses = 0
 
 
-def prompt_with_retry(llm, message: str) -> str:
+def prompt_with_retry(llm, message: str, cap: int) -> str:
     global _consecutive_losses
     delays = RETRY_DELAYS if _consecutive_losses < CIRCUIT_BREAKER else ()  # fail fast once the breaker has tripped
     for attempt, delay in enumerate(delays + (None,)):
         try:
-            answer = llm.prompt(message, temperature=0, extra_api_params={"max_tokens": output_cap(llm.name)})
+            answer = llm.prompt(message, temperature=0, extra_api_params={"max_tokens": cap})
             _consecutive_losses = 0
             return answer
         except Exception as exc:  # noqa: BLE001 - the proxy raises its own error types; the message carries the status
@@ -176,12 +170,23 @@ def prompt_with_retry(llm, message: str) -> str:
 def bpy_drift_case(llm, case_id: str, version: str) -> dict:
     """Ask one question for one Blender version and grade the answer inside that Blender."""
     case = CASES[case_id]
-    with kbench.chats.new(name=f"{case_id} @ {version}", system_instructions=SYSTEM_PROMPT) as chat:
-        answer = prompt_with_retry(llm, build_user_prompt(version, case.question))
-        usage = chat.usage
+
+    def ask(cap):
+        with kbench.chats.new(name=f"{case_id} @ {version}", system_instructions=SYSTEM_PROMPT) as chat:
+            answer = prompt_with_retry(llm, build_user_prompt(version, case.question), cap)
+            return answer, chat.usage
+
+    cap = output_cap(llm.name)
+    answer, usage = ask(cap)
+    if is_truncated(usage.output_tokens, cap):  # a different max_tokens is a cache miss, so this is a fresh answer
+        print(f"  {case_id} {version}: answer cut at the {cap}-token cap ({usage.output_tokens} tokens); asking again with {2 * cap}")
+        answer, second = ask(2 * cap)
+        usage, cap = usage + second, 2 * cap
+        if is_truncated(second.output_tokens, cap):
+            raise RuntimeError(f"answer truncated twice ({second.output_tokens} tokens at a {cap} cap): output cap, not a model error")
     result = grade(answer, case, version, binary=BLENDER[version])
     RECORDS.append({"model": llm.name, "category": case.category, "answer": answer, **result.as_dict(),
-                    "input_tokens": usage.input_tokens, "output_tokens": usage.output_tokens,
+                    "input_tokens": usage.input_tokens, "output_tokens": usage.output_tokens, "output_cap": cap,
                     "cost_usd": (usage.total_cost_nanodollars or 0) / 1e9})
     return {"case_id": case_id, "version": version, "runs": result.runs, "aware": result.aware,
             "reason": result.reason, "expected": result.expected}

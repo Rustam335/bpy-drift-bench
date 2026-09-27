@@ -32,3 +32,21 @@ def test_regrade_aware_uses_the_current_parser_on_stored_answers():
 
     assert row["aware"] is True
     assert row["failures"] == ["Blender: AttributeError: x"]
+
+
+def test_split_truncated_moves_answers_cut_at_the_output_cap():
+    from aggregate_runs import split_truncated
+
+    cut = {"model": "google/gemini-3.8-flash", "case_id": "auto-smooth", "version": "4.5", "output_tokens": 8188,
+           "runs": False}
+    whole = {"model": "google/gemini-3.8-flash", "case_id": "auto-smooth", "version": "5.0", "output_tokens": 8074,
+             "runs": True}
+    big_cap = {"model": "deepseek-ai/deepseek-r1-0528", "case_id": "auto-smooth", "version": "4.5",
+               "output_tokens": 8188, "runs": True}  # v6 gave reasoning models 16384: not truncated
+    stored = {"model": "google/gemini-3.8-flash", "case_id": "color-strip", "version": "5.0", "output_tokens": 16380,
+              "output_cap": 16384, "runs": False}  # v7 records carry the cap that was used
+
+    kept, truncated = split_truncated([cut, whole, big_cap, stored])
+
+    assert kept == [whole, big_cap]
+    assert truncated == [cut, stored]

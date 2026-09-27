@@ -12,6 +12,7 @@ working directory; `tasks download` puts each run in its own folder. This script
 records.jsonl below the input folder, concatenates them, and writes:
 
     out/records.jsonl        every graded answer, all models (aware axis re-graded by the current parser)
+    out/truncated.csv        answers cut at the proxy output cap, excluded from every table (infrastructure, not model)
     out/results.csv          the same without answer text and stderr
     out/runs_by_version.csv  run rate per model x version (+ all)
     out/aware_by_version.csv awareness rate per model x version
@@ -35,6 +36,26 @@ import pandas as pd  # noqa: E402
 from bpy_drift import report  # noqa: E402
 from bpy_drift.cases import load_api_changes  # noqa: E402
 from bpy_drift.contract import check_watch_out, split_blocks  # noqa: E402
+from bpy_drift.prompt import MAX_OUTPUT_TOKENS, REASONING_OUTPUT_TOKENS, is_truncated  # noqa: E402
+
+# Task versions up to v6 did not store the cap in the record and gave gemini the short cap.
+LEGACY_REASONING_MARKERS = ("deepseek-r1", "thinking", "reasoning", "gpt-5", "gpt-6", "grok")
+
+
+def record_cap(record: dict) -> int:
+    """The max_tokens the notebook used for this answer: stored from v7 on, reconstructed for older records."""
+    if record.get("output_cap"):
+        return int(record["output_cap"])
+    name = record["model"].lower()
+    return REASONING_OUTPUT_TOKENS if any(m in name for m in LEGACY_REASONING_MARKERS) else MAX_OUTPUT_TOKENS
+
+
+def split_truncated(records: list[dict]) -> tuple[list[dict], list[dict]]:
+    """Separate answers that stopped at the proxy output cap. Notebook versions before v7 graded them as ordinary
+    failures; they are an infrastructure limit and leave the denominator like errored prompts."""
+    truncated = [r for r in records if is_truncated(r.get("output_tokens"), record_cap(r))]
+    kept = [r for r in records if not is_truncated(r.get("output_tokens"), record_cap(r))]
+    return kept, truncated
 
 
 def regrade_aware(records: list[dict]) -> list[dict]:
@@ -68,6 +89,9 @@ def main(src: str, dst: str) -> int:
     if not records:
         print(f"no records.jsonl under {root}")
         return 1
+    records, truncated = split_truncated(records)
+    for r in truncated:
+        print(f"truncated at the output cap, excluded: {r['model']} {r['case_id']} {r['version']} ({r['output_tokens']} tokens)")
     before = sum(bool(r.get("aware")) for r in records)
     records = regrade_aware(records)
     print(f"aware re-graded with the current parser: {before} -> {sum(r['aware'] for r in records)} aware answers")
@@ -77,6 +101,7 @@ def main(src: str, dst: str) -> int:
     print(f"{len(df)} graded answers, {df['model'].nunique()} models")
 
     df.to_json(out / "records.jsonl", orient="records", lines=True)
+    pd.DataFrame(truncated, columns=["model", "case_id", "version", "output_tokens"]).to_csv(out / "truncated.csv", index=False)
     df.drop(columns=["answer", "stderr"]).to_csv(out / "results.csv", index=False)
     report.rate_table(df, "runs").to_csv(out / "runs_by_version.csv")
     report.rate_table(df, "aware").to_csv(out / "aware_by_version.csv")
