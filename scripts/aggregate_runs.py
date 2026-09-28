@@ -11,7 +11,9 @@ Every model run writes records.jsonl (one graded answer per line, model name inc
 working directory; `tasks download` puts each run in its own folder. This script finds every
 records.jsonl below the input folder, concatenates them, and writes:
 
-    out/records.jsonl        every graded answer, all models (aware axis re-graded by the current parser)
+    out/records.jsonl        every graded answer, all models (aware axis re-graded by the current parser; an
+                             answer whose script the current parser extracts differently is re-run in the
+                             local Blender named by BLENDER_BIN_<mm>, so the runs axis follows the parser too)
     out/truncated.csv        answers cut at the proxy output cap, excluded from every table (infrastructure, not model)
     out/results.csv          the same without answer text and stderr
     out/runs_by_version.csv  run rate per model x version (+ all)
@@ -24,6 +26,7 @@ records.jsonl below the input folder, concatenates them, and writes:
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -34,8 +37,9 @@ import matplotlib.pyplot as plt  # noqa: E402
 import pandas as pd  # noqa: E402
 
 from bpy_drift import report  # noqa: E402
-from bpy_drift.cases import load_api_changes  # noqa: E402
-from bpy_drift.contract import check_watch_out, split_blocks  # noqa: E402
+from bpy_drift.blender import RunOutcome, env_var_for, run_script  # noqa: E402
+from bpy_drift.cases import load_api_changes, load_cases  # noqa: E402
+from bpy_drift.contract import check_watch_out, extract_script, split_blocks  # noqa: E402
 from bpy_drift.prompt import MAX_OUTPUT_TOKENS, REASONING_OUTPUT_TOKENS, is_truncated  # noqa: E402
 
 # Task versions up to v6 did not store the cap in the record and gave gemini the short cap.
@@ -71,6 +75,41 @@ def regrade_aware(records: list[dict]) -> list[dict]:
     return out
 
 
+def local_blender(version: str) -> str | None:
+    """The local Blender binary for `version` (env BLENDER_BIN_<mm>), or None: the offline re-grade never downloads."""
+    binary = os.environ.get(env_var_for(version))
+    return binary if binary and Path(binary).is_file() else None
+
+
+def regrade_runs(records: list[dict]) -> tuple[list[dict], list[dict]]:
+    """Re-run the answers whose script the current parser extracts differently from what the notebook ran.
+
+    The notebook version that graded deepseek-r1 took the first fence in the answer, which for that model
+    sits inside its <think> block (a placeholder or a draft). Returns (re-graded records, untouched records);
+    a record stays as it was when no local Blender for its version is configured, with a note.
+    """
+    cases = {c.id: c for c in load_cases()}
+    fixed, unchanged = [], []
+    for r in records:
+        script = extract_script(r.get("answer") or "")
+        if script == (r.get("script") or "") or r["case_id"] not in cases:
+            unchanged.append(r)
+            continue
+        binary = local_blender(r["version"])
+        if binary is None:
+            print(f"script changed under the current parser but no local Blender {r['version']}: "
+                  f"{r['model']} {r['case_id']} kept as graded")
+            fixed.append(r)
+            continue
+        outcome: RunOutcome = run_script(binary, script, cases[r["case_id"]].assert_for(r["version"]))
+        other = [f for f in r.get("failures", []) if not f.startswith("Blender:")]
+        blender = [] if outcome.passed else [f"Blender: {outcome.reason}"]
+        print(f"re-run {r['model']} {r['case_id']} {r['version']}: {r.get('runs')} -> {outcome.passed}")
+        fixed.append({**r, "script": script, "runs": outcome.passed, "reason": "" if outcome.passed else outcome.reason,
+                      "stderr": outcome.stderr[-4000:], "failures": other + blender, "regraded_locally": True})
+    return fixed, unchanged
+
+
 def load_records(root: Path, skip: Path | None = None) -> list[dict]:
     records: list[dict] = []
     for path in sorted(root.rglob("records.jsonl")):
@@ -92,6 +131,9 @@ def main(src: str, dst: str) -> int:
     records, truncated = split_truncated(records)
     for r in truncated:
         print(f"truncated at the output cap, excluded: {r['model']} {r['case_id']} {r['version']} ({r['output_tokens']} tokens)")
+    fixed, unchanged = regrade_runs(records)
+    print(f"runs re-graded in local Blender: {len(fixed)} answers whose script the current parser reads differently")
+    records = fixed + unchanged
     before = sum(bool(r.get("aware")) for r in records)
     records = regrade_aware(records)
     print(f"aware re-graded with the current parser: {before} -> {sum(r['aware'] for r in records)} aware answers")

@@ -90,3 +90,29 @@ def test_check_watch_out_ignores_added_changes_and_missing_block_when_no_traps()
 def test_no_replacement_marker_is_not_required():
     expected = [change("bpy.types.Mesh.calc_normals", "(none) normals are computed lazily")]
     assert check_watch_out("- calc_normals was removed in 4.0", expected) == []
+
+
+def test_strip_thinking_drops_the_reasoning_block():
+    from bpy_drift.contract import strip_thinking
+
+    text = "<think>\nplan: ```python\n<script>\n```\n</think>\n```python\nimport bpy\n```\nWATCH OUT\n- none"
+    assert strip_thinking(text) == "\n```python\nimport bpy\n```\nWATCH OUT\n- none"
+    assert strip_thinking("no reasoning here") == "no reasoning here"
+    # an unclosed block means the model never reached its answer
+    assert strip_thinking("<think>\nstill thinking") == ""
+
+
+def test_extract_script_ignores_fences_inside_the_thinking_block():
+    # deepseek-r1 drafts the answer inside <think>, sometimes with a placeholder fence; the final script follows.
+    text = ("<think>\nI will answer as:\n```python\n<the complete script>\n```\nand then a draft:\n"
+            "```python\nimport bpy\nbpy.ops.mesh.primitive_cube_add(size=2)\n```\ndone.\n</think>\n"
+            "```python\nimport bpy\ncube = bpy.data.objects['Cube']\n```\n\nWATCH OUT\n- none\n")
+    assert extract_script(text) == "import bpy\ncube = bpy.data.objects['Cube']"
+
+
+def test_split_blocks_ignores_watch_out_inside_the_thinking_block():
+    text = ("<think>\nWATCH OUT should list bpy.ops.export_scene.obj -> bpy.ops.wm.obj_export\n</think>\n"
+            "```python\nimport bpy\n```\n\nWATCH OUT\n- none\n")
+    blocks = split_blocks(text)
+    assert blocks.watch_out.strip() == "WATCH OUT\n- none"
+    assert "export_scene" not in blocks.answer

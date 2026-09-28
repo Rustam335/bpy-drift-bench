@@ -50,3 +50,48 @@ def test_split_truncated_moves_answers_cut_at_the_output_cap():
 
     assert kept == [whole, big_cap]
     assert truncated == [cut, stored]
+
+
+def test_regrade_runs_reruns_only_answers_whose_script_changed_under_the_current_parser(monkeypatch):
+    import aggregate_runs
+    from aggregate_runs import regrade_runs
+
+    calls = []
+
+    def fake_run(binary, script, assert_script="", timeout_s=120):
+        calls.append((binary, script, assert_script))
+        return aggregate_runs.RunOutcome(passed=True, returncode=0, stdout="", stderr="", timed_out=False)
+
+    monkeypatch.setattr(aggregate_runs, "run_script", fake_run)
+    monkeypatch.setattr(aggregate_runs, "local_blender", lambda version: "blender-4.2")
+
+    thinking = ("<think>\n```python\n<script>\n```\n</think>\n```python\nimport bpy\nx = 1\n```\nWATCH OUT\n- none\n")
+    stale = {"model": "deepseek-ai/deepseek-r1-0528", "case_id": "array-modifier", "version": "4.2", "answer": thinking,
+             "script": "<script>", "runs": False, "reason": "SyntaxError: invalid syntax", "stderr": "boom",
+             "failures": ["Blender: SyntaxError: invalid syntax"]}
+    same = {"model": "google/gemini-3.8-flash", "case_id": "array-modifier", "version": "4.2",
+            "answer": "```python\nimport bpy\n```\nWATCH OUT\n- none\n", "script": "import bpy", "runs": True,
+            "reason": "", "stderr": "", "failures": []}
+
+    (fixed,), unchanged = regrade_runs([stale, same])
+
+    assert unchanged == [same]
+    assert len(calls) == 1 and calls[0][0] == "blender-4.2" and calls[0][1] == "import bpy\nx = 1"
+    assert calls[0][2]  # the case's assert travels with the script
+    assert fixed["runs"] is True and fixed["script"] == "import bpy\nx = 1"
+    assert fixed["reason"] == "" and fixed["failures"] == [] and fixed["stderr"] == ""
+
+
+def test_regrade_runs_keeps_the_record_when_no_local_blender_is_available(monkeypatch, capsys):
+    import aggregate_runs
+    from aggregate_runs import regrade_runs
+
+    monkeypatch.setattr(aggregate_runs, "local_blender", lambda version: None)
+    stale = {"model": "m", "case_id": "array-modifier", "version": "5.0",
+             "answer": "<think>\n```python\n<script>\n```\n</think>\n```python\nimport bpy\n```\n",
+             "script": "<script>", "runs": False, "reason": "SyntaxError", "stderr": "", "failures": []}
+
+    fixed, unchanged = regrade_runs([stale])
+
+    assert fixed == [stale] and unchanged == []
+    assert "no local Blender 5.0" in capsys.readouterr().out

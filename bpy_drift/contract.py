@@ -26,6 +26,7 @@ OPERATOR_CHARS = re.compile(r"[@*]")
 IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 QUOTED = re.compile(r"[\"']([^\"']+)[\"']")
 FENCED = re.compile(r"```(?:python|py)?\s*\n(.*?)```", re.S)
+THINKING = re.compile(r"<think>.*?(?:</think>|\Z)", re.S)
 
 
 @dataclass(frozen=True)
@@ -37,10 +38,21 @@ class Blocks:
 BULLET = re.compile(r"^\s*[-*]\s+\S", re.M)
 
 
+def strip_thinking(text: str) -> str:
+    """Drop `<think>...</think>` reasoning blocks (deepseek-r1 returns them inline through the proxy).
+
+    The reasoning drafts scripts and placeholder fences (```python <script> ```) and rehearses the
+    WATCH OUT list, so both parsers must look only at what follows it. An unclosed block means the
+    model ran out of room before answering: nothing is left to grade.
+    """
+    return THINKING.sub("", text)
+
+
 def split_blocks(text: str) -> Blocks:
     """The WATCH OUT section: from its heading to the end, or, when the heading is missing, the
     bullet list that follows the last closing fence (some models drop the heading and answer
     `- none` or `- <change>` bare; the axis grades what they know, not whether they wrote the word)."""
+    text = strip_thinking(text)
     m = re.search(r"^\s*(?:#+\s*)?(?:\*\*)?WATCH OUT\b", text, re.M)
     if m:
         return Blocks(answer=text[: m.start()], watch_out=text[m.start():])
@@ -54,8 +66,9 @@ def extract_script(text: str) -> str:
     """The python script in the answer: first fenced block, else a 4-space indented block.
 
     A fenced block that the model indented as a whole (markdown list style) is dedented, so the
-    grade reflects the bpy calls and not the chat formatting.
+    grade reflects the bpy calls and not the chat formatting. Reasoning blocks are skipped first.
     """
+    text = strip_thinking(text)
     m = FENCED.search(text)
     if m:
         return textwrap.dedent(m.group(1)).strip("\n").rstrip()
