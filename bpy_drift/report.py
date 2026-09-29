@@ -85,17 +85,18 @@ def plot_drift_curves(df: pd.DataFrame, metric: str = "runs", ax=None):
 
     table = rate_table(df, metric).drop(columns="all")
     if ax is None:
-        _, ax = plt.subplots(figsize=(7, 4), dpi=120)
+        _, ax = plt.subplots(figsize=(9, 4), dpi=120)
     for i, (model, row) in enumerate(table.iterrows()):
         ax.plot(table.columns.astype(str), row.values, marker="o", markersize=4, linewidth=1.6,
-                color=PALETTE[i % len(PALETTE)], label=str(model))
+                color=PALETTE[i % len(PALETTE)], label=str(model).split("/")[-1])
     ax.set_ylim(0, 1.02)
     ax.set_yticks([0, 0.25, 0.5, 0.75, 1.0])
     ax.set_yticklabels(["0%", "25%", "50%", "75%", "100%"])
     label = "scripts that run on the target version" if metric == "runs" else "answers that name the API change"
     _style(ax, f"Share of {label}, by Blender version", "")
     ax.set_xlabel("Blender version asked for", color=MUTED)
-    ax.legend(frameon=False, fontsize=8, loc="lower left")
+    ax.legend(frameon=False, fontsize=8, loc="upper left", bbox_to_anchor=(1.01, 1.0), borderaxespad=0)
+    ax.figure.tight_layout()
     return ax
 
 
@@ -116,7 +117,9 @@ def plot_category_heatmap(df: pd.DataFrame, metric: str = "runs", ax=None):
     for i in range(table.shape[0]):
         for j in range(table.shape[1]):
             v = table.values[i, j]
-            if not np.isnan(v):
+            if np.isnan(v):
+                ax.text(j, i, "no case", ha="center", va="center", fontsize=7, color=MUTED)
+            else:
                 ax.text(j, i, f"{v:.0%}", ha="center", va="center", fontsize=8,
                         color=INK if v > 0.55 else "#f2f2f2")
     ax.set_title(f"{'Run' if metric == 'runs' else 'Awareness'} rate by change category and version, all models",

@@ -136,7 +136,7 @@ Notes on reading these numbers:
   `<think>...</think>`, and the notebook version that ran it took a draft script from inside that block. The
   tables above re-extract the final answer and re-run the changed scripts in the same Blender builds.
 - **grok-4.20-0309-reasoning has the widest gap of the ten**: 82% of its scripts run, but it writes `- none`
-  under WATCH OUT in 105 of 119 answers, including for every 2.80-era change it silently gets right. Its
+  under WATCH OUT in 110 of 119 answers, including for every 2.80-era change it silently gets right. Its
   awareness by version (69 / 23 / 13 / 10%) is identical to qwen3-coder's.
 - **grok-4.6** is listed by the Model Proxy but every call returned `404 model not found`; its run is recorded as
   errored and it has no row here. grok-4.20-0309-reasoning is the xAI entry instead.
